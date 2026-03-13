@@ -1,0 +1,907 @@
+{% if section.settings.enable_section %}
+
+<style>
+  #tb-upsell-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 9999;
+    display: none;
+  }
+  #tb-upsell-overlay.tb-upsell-visible { display: block; }
+
+  .tb-upsell-modal {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    font-family: inherit;
+  }
+
+  .tb-upsell-modal, .tb-upsell-modal * {
+    box-sizing: border-box;
+  }
+
+  .tb-upsell-close-x {
+    position: fixed;
+    right: 14px; top: 10px;
+    font-size: 28px;
+    font-weight: 900;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 10000;
+    color: #000;
+  }
+
+  .tb-upsell-top {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    background: #fff;
+    padding: 12px 10px 220px;
+  }
+  @media(min-width:1100px){
+
+  .tb-upsell-modal {
+    justify-content: center;
+    align-items: center;
+  }
+
+  .tb-upsell-top {
+    width: 1200px;
+    max-width: 92vw;
+    margin: 40px auto 0 auto;
+    padding: 30px 40px 260px;
+    border-radius: 20px;
+  }
+
+  .tb-upsell-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+  }
+
+  .tb-upsell-footer-inner{
+    width: 1200px;
+    max-width: 92vw;
+    margin: 0 auto;
+  }
+
+}
+
+  .tb-upsell-box-success {
+    background:#f4f4f4;
+    border-radius:14px;
+    padding:8px 10px;
+    font-size:14px; font-weight:700;
+    margin-bottom:10px;
+  }
+  .tb-upsell-box-free {
+    display:flex; align-items:center; gap:8px;
+    background:#daf8d0;
+    border-radius:14px;
+    padding:8px 10px;
+    font-size:14px; font-weight:600;
+    margin-bottom:14px;
+  }
+  .tb-hidden { display:none!important; }
+
+  .tb-upsell-heading {
+    font-size:22px; font-weight:900;
+    margin-bottom:4px;
+  }
+  .tb-upsell-subtext { font-size:13px; margin-bottom:14px; }
+
+  .tb-upsell-grid {
+    display:grid;
+    gap:10px;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    width:100%;
+  }
+  @media(min-width:900px){
+    .tb-upsell-grid { grid-template-columns:repeat(4, minmax(0, 1fr)); }
+  }
+
+  .tb-upsell-card {
+    background:#fff;
+    border-radius:14px;
+    padding:8px 8px 12px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.08);
+    display:flex; flex-direction:column;
+    width:100%;
+  }
+  .tb-upsell-title {
+    font-size:15px; font-weight:800;
+    margin-bottom:4px;
+  }
+
+  .tb-upsell-image-wrap {
+    width:100%; padding-top:100%;
+    border-radius:10px; overflow:hidden;
+    background:#f5f5f5; position:relative;
+    margin-bottom:6px;
+  }
+  .tb-upsell-image-wrap img {
+    position:absolute; inset:0;
+    width:100%; height:100%; object-fit:cover;
+  }
+  .tb-upsell-image-skeleton {
+    position:absolute; inset:0;
+    background:linear-gradient(90deg,#eee,#dcdcdc,#eee);
+    background-size:200% 100%;
+    animation:tb-skeleton 1.2s linear infinite;
+  }
+  @keyframes tb-skeleton {
+    0%{background-position:200% 0;}
+    100%{background-position:-200% 0;}
+  }
+
+  /* Preisbereich */
+  .tb-upsell-price-row {
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:2px;
+    margin-bottom:6px;
+  }
+  .tb-upsell-price-line {
+    display:flex;
+    align-items:baseline;
+    gap:4px;
+  }
+  .tb-upsell-price {
+    font-size:15px;
+    font-weight:800;
+    color:#000;
+  }
+  .tb-upsell-price.tb-upsell-price--discount {
+    color:#d32f2f;
+  }
+  .tb-upsell-compare-price {
+    font-size:13px;
+    color:#999;
+    text-decoration:line-through;
+  }
+  .tb-upsell-tax {
+    font-size:11px;
+    color:#888;
+  }
+
+  /* Größe T-Shirts */
+  .tb-upsell-size-row {
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    margin-bottom:6px;
+    font-size:12px;
+  }
+  .tb-upsell-size-label {
+    font-weight:600;
+  }
+  .tb-upsell-size-select {
+    width:100%;
+    border-radius:8px;
+    border:1px solid #bfbfbf;
+    padding:5px 8px;
+    font-size:13px;
+    background:#fff;
+  }
+
+  .tb-upsell-add-btn {
+    width:100%;
+    background:#ffb800; border:none;
+    padding:7px 10px;
+    border-radius:999px;
+    font-weight:700; cursor:pointer;
+    font-size:14px; color:#000;
+    margin-top:6px;
+  }
+
+  .tb-upsell-added-label {
+    width:100%;
+    background:#e4f7e4;
+    border-radius:999px;
+    text-align:center;
+    padding:7px;
+    font-size:13px; font-weight:700;
+    color:#138313;
+    opacity:1;
+    transition:opacity .35s ease, filter .35s ease;
+    margin-top:6px;
+  }
+  .tb-upsell-added-label.tb-upsell-added-fadeout {
+    opacity:0;
+    filter:blur(3px);
+  }
+
+  .tb-upsell-footer {
+    position:fixed; left:0; right:0; bottom:0;
+    background:#fff;
+    border-top:3px solid #f3c12c;
+    padding:12px 12px 16px;
+  }
+  @media(min-width:900px){
+    .tb-upsell-footer-inner{ max-width:900px; margin:0 auto; }
+  }
+
+  .tb-upsell-summary-row {
+    display:flex; justify-content:space-between;
+    align-items:center;
+    margin-bottom:6px;
+    font-size:14px;
+    font-weight:700;
+  }
+  .tb-upsell-summary-subrow {
+    display:flex; justify-content:space-between;
+    align-items:center;
+    font-size:12px;
+    margin-bottom:10px;
+  }
+
+  .tb-upsell-footer-buttons {
+    display:flex; gap:8px; margin-bottom:10px;
+  }
+  .tb-upsell-cart-btn {
+    flex:1; background:#eee; border:none;
+    padding:9px 10px; border-radius:999px;
+    font-size:14px; font-weight:600;
+    color: black;
+    cursor:pointer;
+  }
+  .tb-upsell-checkout-btn {
+    flex:1.2; background:#ffb800; border:none;
+    color: black;
+    padding:10px 12px; border-radius:999px;
+    font-size:16px; font-weight:800; cursor:pointer;
+  }
+
+  .tb-upsell-back-link {
+    padding-top:10px; text-align:center; font-size:13px;
+  }
+  .tb-upsell-back-link a { text-decoration:underline; cursor:pointer; }
+</style>
+
+
+<div id="tb-upsell-overlay">
+  <div class="tb-upsell-modal">
+    <div class="tb-upsell-close-x" id="tb-upsell-close-x">×</div>
+
+    <div class="tb-upsell-top">
+      <div class="tb-upsell-box-success">
+        ✅ <span class="tb-upsell-product-name">Produktname</span> erfolgreich zum Warenkorb hinzugefügt
+      </div>
+
+      <div class="tb-upsell-box-free tb-hidden" id="tb-upsell-free-box">
+        🚚 <span id="tb-upsell-free-text"></span>
+      </div>
+
+      <div class="tb-upsell-heading">Dein Design jetzt auch auf…</div>
+      <div class="tb-upsell-subtext">
+      </div>
+
+      <div class="tb-upsell-grid">
+
+        <!-- T-Shirt weiß -->
+        {% if section.settings.show_tee_white %}
+        <div
+          class="tb-upsell-card"
+          id="tb-upsell-card-tee-white"
+          data-variant-id="56327450493303"
+          data-endpoint="/tee-white-preview"
+          data-size-xs="56327450427767"
+          data-size-s="56327450460535"
+          data-size-m="56327450493303"
+          data-size-l="56327450526071"
+          data-size-xl="56327450558839"
+          data-size-xxl="56327450591607"
+          data-size-3xl="56327450624375"
+        >
+          <div class="tb-upsell-title">T-Shirt weiß</div>
+          <div class="tb-upsell-image-wrap">
+            <div class="tb-upsell-image-skeleton"></div>
+            <img src="" alt="T-Shirt weiß Vorschau">
+          </div>
+          <div class="tb-upsell-price-row">
+            <div class="tb-upsell-price-line">
+              <span class="tb-upsell-price">–</span>
+              <span class="tb-upsell-compare-price"></span>
+            </div>
+            <div class="tb-upsell-tax">inkl. MwSt.</div>
+          </div>
+
+          <div class="tb-upsell-size-row">
+            <span class="tb-upsell-size-label">Größe wählen</span>
+            <select class="tb-upsell-size-select">
+              <option value="XS">XS</option>
+              <option value="S">S</option>
+              <option value="M" selected>M</option>
+              <option value="L">L</option>
+              <option value="XL">XL</option>
+              <option value="XXL">XXL</option>
+              <option value="3XL">3XL</option>
+            </select>
+          </div>
+
+          <button class="tb-upsell-add-btn">Hinzufügen</button>
+          <div class="tb-upsell-added-label tb-hidden">Erfolgreich hinzugefügt</div>
+        </div>
+        {% endif %}
+
+        <!-- T-Shirt schwarz -->
+        {% if section.settings.show_tee_black %}
+        <div
+          class="tb-upsell-card"
+          id="tb-upsell-card-tee-black"
+          data-variant-id="56327450198391"
+          data-endpoint="/tee-black-preview"
+          data-size-xs="56327450132855"
+          data-size-s="56327450165623"
+          data-size-m="56327450198391"
+          data-size-l="56327450231159"
+          data-size-xl="56327450263927"
+          data-size-xxl="56327450296695"
+          data-size-3xl="56327450329463"
+        >
+          <div class="tb-upsell-title">T-Shirt schwarz</div>
+          <div class="tb-upsell-image-wrap">
+            <div class="tb-upsell-image-skeleton"></div>
+            <img src="" alt="T-Shirt schwarz Vorschau">
+          </div>
+          <div class="tb-upsell-price-row">
+            <div class="tb-upsell-price-line">
+              <span class="tb-upsell-price">–</span>
+              <span class="tb-upsell-compare-price"></span>
+            </div>
+            <div class="tb-upsell-tax">inkl. MwSt.</div>
+          </div>
+
+          <div class="tb-upsell-size-row">
+            <span class="tb-upsell-size-label">Größe wählen</span>
+            <select class="tb-upsell-size-select">
+              <option value="XS">XS</option>
+              <option value="S">S</option>
+              <option value="M" selected>M</option>
+              <option value="L">L</option>
+              <option value="XL">XL</option>
+              <option value="XXL">XXL</option>
+              <option value="3XL">3XL</option>
+            </select>
+          </div>
+
+          <button class="tb-upsell-add-btn">Hinzufügen</button>
+          <div class="tb-upsell-added-label tb-hidden">Erfolgreich hinzugefügt</div>
+        </div>
+      {% endif %}
+
+        <!-- Tragetasche -->
+        {% if section.settings.show_tote_natural %}
+        <div
+          class="tb-upsell-card"
+          id="tb-upsell-card-tote"
+          data-variant-id="56327280787831"
+          data-endpoint="/tote-preview"
+        >
+          <div class="tb-upsell-title">Tragetasche natural</div>
+          <div class="tb-upsell-image-wrap">
+            <div class="tb-upsell-image-skeleton"></div>
+            <img src="" alt="Tragetasche Vorschau">
+          </div>
+          <div class="tb-upsell-price-row">
+            <div class="tb-upsell-price-line">
+              <span class="tb-upsell-price">–</span>
+              <span class="tb-upsell-compare-price"></span>
+            </div>
+            <div class="tb-upsell-tax">inkl. MwSt.</div>
+          </div>
+
+          <button class="tb-upsell-add-btn">Hinzufügen</button>
+          <div class="tb-upsell-added-label tb-hidden">Erfolgreich hinzugefügt</div>
+        </div>
+      {% endif %}
+
+        <!-- Tragetasche schwarz -->
+        {% if section.settings.show_tote_black %}
+        <div
+          class="tb-upsell-card"
+          id="tb-upsell-card-mug"
+          data-variant-id="56327280755063"
+          data-endpoint="/mug-preview"
+        >
+          <div class="tb-upsell-title">Tragetasche schwarz</div>
+          <div class="tb-upsell-image-wrap">
+            <div class="tb-upsell-image-skeleton"></div>
+            <img src="" alt="Tragetasche schwarz Vorschau">
+          </div>
+          <div class="tb-upsell-price-row">
+            <div class="tb-upsell-price-line">
+              <span class="tb-upsell-price">–</span>
+              <span class="tb-upsell-compare-price"></span>
+            </div>
+            <div class="tb-upsell-tax">inkl. MwSt.</div>
+          </div>
+
+          <button class="tb-upsell-add-btn">Hinzufügen</button>
+          <div class="tb-upsell-added-label tb-hidden">Erfolgreich hinzugefügt</div>
+        </div>
+      {% endif %}
+
+      </div>
+    </div>
+
+    <div class="tb-upsell-footer">
+      <div class="tb-upsell-footer-inner">
+
+        <div class="tb-upsell-summary-row">
+          <span>Zwischensumme</span>
+          <span id="tb-upsell-subtotal">0,00 €</span>
+        </div>
+
+        <div class="tb-upsell-summary-subrow">
+          <span id="tb-upsell-delivery-window"></span>
+          <span id="tb-upsell-shipping-amount"></span>
+        </div>
+
+        <div class="tb-upsell-footer-buttons">
+          <button class="tb-upsell-cart-btn" id="tb-upsell-cart-btn">Warenkorb ansehen</button>
+          <button class="tb-upsell-checkout-btn" id="tb-upsell-checkout-btn">Weiter zur Kasse</button>
+        </div>
+
+        <div class="tb-upsell-back-link">
+          <a id="tb-upsell-back-link">Zurück und weiter shoppen</a>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+
+  const BACKEND_BASE = "https://upsell-design-extractor-transparent-production.up.railway.app";
+
+  const FREE_SHIPPING_THRESHOLD = 6000;
+  const SHIPPING_UNDER = 350;
+
+  const overlay    = document.getElementById("tb-upsell-overlay");
+  const closeX     = document.getElementById("tb-upsell-close-x");
+  const freeBox    = document.getElementById("tb-upsell-free-box");
+  const freeText   = document.getElementById("tb-upsell-free-text");
+  const subtotalEl = document.getElementById("tb-upsell-subtotal");
+  const shippingEl = document.getElementById("tb-upsell-shipping-amount");
+  const deliveryEl = document.getElementById("tb-upsell-delivery-window");
+  const cartBtn    = document.getElementById("tb-upsell-cart-btn");
+  const checkoutBtn= document.getElementById("tb-upsell-checkout-btn");
+  const backLink   = document.getElementById("tb-upsell-back-link");
+
+  function money(c){ return (c/100).toFixed(2).replace(".",",")+" €"; }
+  function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+  async function fetchCart(){
+    const r = await fetch("/cart.js",{credentials:"same-origin"});
+    if(!r.ok) throw new Error("cart.js "+r.status);
+    return r.json();
+  }
+
+  async function initDynamicPrices(){
+    const cards = document.querySelectorAll(".tb-upsell-card");
+    for(const card of cards){
+      const variantId = card.getAttribute("data-variant-id");
+      const priceEl = card.querySelector(".tb-upsell-price");
+      const compareEl = card.querySelector(".tb-upsell-compare-price");
+      if(!variantId || !priceEl) continue;
+
+      try{
+        const r = await fetch(`/variants/${variantId}.js`, {credentials:"same-origin"});
+        if(!r.ok) continue;
+        const data = await r.json();
+        const priceCents = parseInt(data.price, 10);
+        const compareCents = data.compare_at_price ? parseInt(data.compare_at_price, 10) : NaN;
+
+        if(!isNaN(priceCents)){
+          priceEl.textContent = money(priceCents);
+        }
+
+        if(compareEl){
+          if(!isNaN(compareCents) && compareCents > priceCents){
+            compareEl.textContent = money(compareCents);
+            priceEl.classList.add("tb-upsell-price--discount");
+          } else {
+            compareEl.textContent = "";
+            priceEl.classList.remove("tb-upsell-price--discount");
+          }
+        }
+      }catch(e){}
+    }
+  }
+
+  function computeDeliveryWindow(){
+    const t = new Date();
+    const s = new Date(t); s.setDate(t.getDate()+3);
+    const e = new Date(t); e.setDate(t.getDate()+4);
+
+    const M = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+    const f = d => d.getDate().toString().padStart(2,"0")+"."+M[d.getMonth()];
+    return "Lieferung zwischen "+f(s)+" und "+f(e);
+  }
+
+  async function updateSummary(){
+    const cart = await fetchCart();
+    const tot = cart.total_price || 0;
+    subtotalEl.textContent = money(tot);
+    deliveryEl.textContent = computeDeliveryWindow();
+
+    if(tot >= FREE_SHIPPING_THRESHOLD){
+      shippingEl.textContent = "Kostenlos";
+      shippingEl.style.color = "#15a315";
+      shippingEl.style.fontWeight = "700";
+      freeBox.classList.add("tb-hidden");
+    } else {
+      shippingEl.textContent = money(SHIPPING_UNDER);
+      freeBox.classList.remove("tb-hidden");
+      const diff = FREE_SHIPPING_THRESHOLD - tot;
+      freeText.textContent = "Noch "+money(diff)+" für kostenlosen Versand";
+    }
+  }
+
+  function showAddedLabelTemporary(addBtn, addedLbl){
+    addBtn.classList.add("tb-hidden");
+    addedLbl.classList.remove("tb-hidden");
+    addedLbl.classList.remove("tb-upsell-added-fadeout");
+
+    setTimeout(()=>{
+      addedLbl.classList.add("tb-upsell-added-fadeout");
+      setTimeout(()=>{
+        addedLbl.classList.add("tb-hidden");
+        addedLbl.classList.remove("tb-upsell-added-fadeout");
+        addBtn.classList.remove("tb-hidden");
+      }, 400);
+    }, 2000);
+  }
+
+
+
+function getBaseMockupUrl(){
+  const img = document.querySelector(".tee-printarea--image img");
+  if(img && img.src){
+    return img.src;
+  }
+  return null;
+}
+
+
+
+  function setupUpsellCard(card, mainItem, artworkUrl){
+    
+console.log("SetupUpsellCard läuft");
+
+const endpoint  = card.getAttribute("data-endpoint");
+    const variantId = card.getAttribute("data-variant-id");
+    const img       = card.querySelector("img");
+    const skeleton  = card.querySelector(".tb-upsell-image-skeleton");
+    const addBtn    = card.querySelector(".tb-upsell-add-btn");
+    const addedLbl  = card.querySelector(".tb-upsell-added-label");
+
+ const baseMockupUrl = getBaseMockupUrl();
+if(!baseMockupUrl){
+  console.error("Base Mockup URL nicht gefunden");
+  return;
+}
+console.log("setupUpsellCard läuft");
+console.log("BaseMockup:", baseMockupUrl);
+console.log("Artwork:", artworkUrl);
+const previewUrl =
+  BACKEND_BASE + endpoint +
+  "?url=" + encodeURIComponent(artworkUrl) +
+  "&mockup_url=" + encodeURIComponent(baseMockupUrl) +
+  "&cb=" + Date.now();
+
+    /* CHANGE START: Handler vor src setzen + reset */
+    skeleton.style.display = "";
+    img.onload = null; img.onerror = null;
+    img.removeAttribute("src");
+
+    img.onload = ()=>{ skeleton.style.display="none"; };
+    img.onerror = ()=>{ skeleton.style.display="none"; img.src = artworkUrl; };
+
+    img.src = previewUrl;
+    /* CHANGE END */
+
+    addBtn.onclick = async ()=>{
+
+      const qty = 1; // Menge fix 1
+
+      const props = {...(mainItem.properties||{})};
+      props._original_customization_image = artworkUrl;
+      props._customization_image = previewUrl;
+      if(mainItem.properties && mainItem.properties._customization_id){
+      props._customization_id = mainItem.properties._customization_id;
+      }
+
+      addBtn.disabled = true;
+
+      try{
+        const r = await fetch("/cart/add.js",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          credentials:"same-origin",
+          body:JSON.stringify({ items:[{ id:variantId, quantity:qty, properties:props }] })
+        });
+
+        if(!r.ok){
+          addBtn.disabled = false;
+          alert("Fehler beim Hinzufügen");
+          return;
+        }
+
+        addBtn.disabled = false;
+        showAddedLabelTemporary(addBtn, addedLbl);
+
+        await updateSummary();
+
+      }catch(e){
+        addBtn.disabled = false;
+        alert("Fehler");
+      }
+    };
+  }
+
+  function setupUpsellShirtCard(card, mainItem, artworkUrl){
+    if(!card) return;
+
+    const endpoint   = card.getAttribute("data-endpoint");
+    const img        = card.querySelector("img");
+    const skeleton   = card.querySelector(".tb-upsell-image-skeleton");
+    const addBtn     = card.querySelector(".tb-upsell-add-btn");
+    const addedLbl   = card.querySelector(".tb-upsell-added-label");
+    const sizeSelect = card.querySelector(".tb-upsell-size-select");
+
+   const baseMockupUrl = getBaseMockupUrl();
+if(!baseMockupUrl){
+  console.error("Base Mockup URL nicht gefunden");
+  return;
+}
+
+const previewUrl =
+  BACKEND_BASE + endpoint +
+  "?url=" + encodeURIComponent(artworkUrl) +
+  "&mockup_url=" + encodeURIComponent(baseMockupUrl) +
+  "&cb=" + Date.now();
+
+    /* CHANGE START: Handler vor src setzen + reset */
+    skeleton.style.display = "";
+    img.onload = null; img.onerror = null;
+    img.removeAttribute("src");
+
+    img.onload = ()=>{ skeleton.style.display="none"; };
+    img.onerror = ()=>{ skeleton.style.display="none"; img.src = artworkUrl; };
+
+    img.src = previewUrl;
+    /* CHANGE END */
+
+    if(sizeSelect && !sizeSelect.value){
+      sizeSelect.value = "M";
+    }
+
+    function getVariantIdForSize(size){
+      switch(size){
+        case "XS": return card.dataset.sizeXs;
+        case "S":  return card.dataset.sizeS;
+        case "M":  return card.dataset.sizeM;
+        case "L":  return card.dataset.sizeL;
+        case "XL": return card.dataset.sizeXl;
+        case "XXL":return card.dataset.sizeXxl;
+        case "3XL":return card.dataset.size3xl;
+        default: return null;
+      }
+    }
+
+    addBtn.onclick = async ()=>{
+
+      const qty = 1; // Menge fix 1
+      const size = sizeSelect ? sizeSelect.value : "M";
+      const variantId = getVariantIdForSize(size);
+
+      if(!variantId){
+        alert("Bitte eine Größe auswählen.");
+        return;
+      }
+
+      const props = {...(mainItem.properties||{})};
+      props._original_customization_image = artworkUrl;
+      props._customization_image = previewUrl;
+      if(mainItem.properties && mainItem.properties._customization_id){
+      props._customization_id = mainItem.properties._customization_id;
+      }
+
+      addBtn.disabled = true;
+
+      try{
+        const r = await fetch("/cart/add.js",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          credentials:"same-origin",
+          body:JSON.stringify({ items:[{ id:variantId, quantity:qty, properties:props }] })
+        });
+
+        if(!r.ok){
+          addBtn.disabled = false;
+          alert("Fehler beim Hinzufügen");
+          return;
+        }
+
+        addBtn.disabled = false;
+        showAddedLabelTemporary(addBtn, addedLbl);
+
+        await updateSummary();
+
+      }catch(e){
+        addBtn.disabled = false;
+        alert("Fehler");
+      }
+    };
+  }
+
+  async function waitForMainItem(){
+    for(let i=0;i<20;i++){
+      const cart = await fetchCart();
+      const it = cart.items.find(x =>
+        x.properties &&
+        typeof x.properties._customization_image === "string" &&
+        x.properties._customization_image !== ""
+      );
+      if(it) return it;
+      await delay(300);
+    }
+    return null;
+  }
+
+  async function openPopup(mainItemCandidate){
+    await delay(600);
+
+    const mainItem = await waitForMainItem();
+    if(!mainItem) return;
+
+    document.querySelector(".tb-upsell-product-name").textContent =
+      mainItem.product_title || mainItem.title || "Produkt";
+
+    const artworkUrl = mainItem.properties._customization_image;
+
+    const toteCard     = document.getElementById("tb-upsell-card-tote");
+    const mugCard      = document.getElementById("tb-upsell-card-mug");
+    const teeWhiteCard = document.getElementById("tb-upsell-card-tee-white");
+    const teeBlackCard = document.getElementById("tb-upsell-card-tee-black");
+
+    setupUpsellCard(toteCard, mainItem, artworkUrl);
+    setupUpsellCard(mugCard,  mainItem, artworkUrl);
+    setupUpsellShirtCard(teeWhiteCard, mainItem, artworkUrl);
+    setupUpsellShirtCard(teeBlackCard, mainItem, artworkUrl);
+
+    await updateSummary();
+
+    overlay.classList.add("tb-upsell-visible");
+  }
+
+  function bindAddButton(){
+
+    function isCartOpen(){
+      if (window.location.pathname === "/cart") return true;
+      if (document.body.classList.contains("template-cart")) return true;
+      if (document.querySelector(".cart-drawer.is-open")) return true;
+      return false;
+    }
+
+    let lastKeys = null;
+    let running  = false;
+
+    async function checkCart(){
+      if(running) return;
+      running = true;
+
+      try{
+        const cart = await fetchCart();
+        const items = cart.items || [];
+        const keys  = items.map(i=>i.key);
+
+        if(lastKeys === null){
+          lastKeys = keys;
+          running = false;
+          return;
+        }
+
+        const newItems = items.filter(i => !lastKeys.includes(i.key));
+
+        lastKeys = keys;
+
+        if(!newItems.length){
+          running = false;
+          return;
+        }
+
+        if(isCartOpen()){
+          running = false;
+          return;
+        }
+
+        const candidate = newItems[newItems.length - 1];
+
+        let hasTag = false;
+        try{
+          if(candidate.handle){
+            const r = await fetch(`/products/${candidate.handle}.js`);
+            if(r.ok){
+              const data = await r.json();
+              const tags = Array.isArray(data.tags)
+                ? data.tags.map(t=>t.toLowerCase())
+                : (""+data.tags).split(",").map(t=>t.trim().toLowerCase());
+              hasTag = tags.includes("personalisierbar");
+            }
+          }
+        }catch(e){}
+
+        if(!hasTag){
+          running = false;
+          return;
+        }
+
+        openPopup(candidate);
+
+      }catch(e){}
+      running = false;
+    }
+
+    setInterval(checkCart, 1200);
+  }
+
+  document.addEventListener("DOMContentLoaded", ()=>{
+    bindAddButton();
+    initDynamicPrices();
+
+    closeX.onclick = ()=> overlay.classList.remove("tb-upsell-visible");
+    backLink.onclick = ()=> overlay.classList.remove("tb-upsell-visible");
+    cartBtn.onclick = ()=> window.location.href="/cart";
+    checkoutBtn.onclick = ()=> window.location.href="/checkout";
+  });
+
+})();
+</script>
+
+{% endif %}
+
+{% schema %}
+{
+  "name": "Upsell Popup",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enable_section",
+      "label": "Upsell Popup aktivieren",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_tee_white",
+      "label": "T-Shirt weiß anzeigen",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_tee_black",
+      "label": "T-Shirt schwarz anzeigen",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_tote_natural",
+      "label": "Tragetasche natural anzeigen",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_tote_black",
+      "label": "Tragetasche schwarz anzeigen",
+      "default": true
+    }
+  ],
+  "presets": [
+    { "name": "Upsell Popup" }
+  ]
+}
+{% endschema %}
