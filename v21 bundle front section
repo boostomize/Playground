@@ -1,0 +1,341 @@
+{% schema %}
+{
+  "name": "Bundle Engine",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "Die Produkt-Zuordnungen und Optionsnamen werden über die App-Einstellungen (Bundle-Zuordnungen) verwaltet und automatisch aus den Shop-Metafields geladen."
+    },
+    {
+      "type": "header",
+      "content": "Preis Notiz"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_price_note",
+      "label": "Preis Notiz anzeigen",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "price_note_text",
+      "label": "Notiz Text",
+      "default": "Preis für beide Produkte"
+    },
+    {
+      "type": "color",
+      "id": "price_note_bg",
+      "label": "Hintergrundfarbe",
+      "default": "#1aa31a"
+    },
+    {
+      "type": "color",
+      "id": "price_note_text_color",
+      "label": "Textfarbe",
+      "default": "#ffffff"
+    },
+    {
+      "type": "range",
+      "id": "price_note_margin_top",
+      "label": "Abstand oben",
+      "min": 0,
+      "max": 40,
+      "step": 2,
+      "unit": "px",
+      "default": 0
+    },
+    {
+      "type": "range",
+      "id": "price_note_margin_bottom",
+      "label": "Abstand unten",
+      "min": 0,
+      "max": 40,
+      "step": 2,
+      "unit": "px",
+      "default": 10
+    },
+    {
+      "type": "header",
+      "content": "Varianten Bundle-Produkt"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_bundle_product_variants",
+      "label": "Varianten anzeigen",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "bundle_variant_display_type",
+      "label": "Anzeige der Varianten",
+      "options": [
+        { "value": "buttons", "label": "Buttons" },
+        { "value": "images", "label": "Variantenbilder" }
+      ],
+      "default": "buttons"
+    },
+    {
+      "type": "range",
+      "id": "variant_image_size_desktop",
+      "label": "Variantenbild Größe Desktop",
+      "min": 40,
+      "max": 140,
+      "step": 2,
+      "unit": "px",
+      "default": 80
+    },
+    {
+      "type": "range",
+      "id": "variant_image_size_mobile",
+      "label": "Variantenbild Größe Mobil",
+      "min": 30,
+      "max": 100,
+      "step": 2,
+      "unit": "px",
+      "default": 60
+    },
+    {
+      "type": "paragraph",
+      "content": "Die Farbe der Produkte wird automatisch basierend auf der Bundle-Variante synchronisiert."
+    },
+    {
+      "type": "header",
+      "content": "Preis"
+    },
+    {
+      "type": "select",
+      "id": "after_add_to_cart",
+      "label": "Aktion nach Hinzufügen zum Warenkorb",
+      "options": [
+        { "value": "redirect", "label": "Zur Warenkorb-Seite weiterleiten" },
+        { "value": "drawer", "label": "Warenkorb-Slider öffnen" },
+        { "value": "stay", "label": "Auf der Seite bleiben" }
+      ],
+      "default": "redirect"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_bundle_product_price",
+      "label": "Preis des Bundle-Produkts anzeigen",
+      "default": false
+    },
+    {
+      "type": "paragraph",
+      "content": "Wenn aktiviert, wird der Bundle-Produktpreis angezeigt statt des berechneten Bundle-Preises."
+    },
+    {
+      "type": "select",
+      "id": "discount_type",
+      "label": "Rabatt-Typ",
+      "options": [
+        { "value": "percent", "label": "Prozent" },
+        { "value": "fixed", "label": "Fixbetrag (€)" }
+      ],
+      "default": "percent"
+    },
+    {
+      "type": "number",
+      "id": "discount_value",
+      "label": "Rabatt-Wert",
+      "default": 0
+    },
+    {
+      "type": "header",
+      "content": "Abstände"
+    },
+    {
+      "type": "range",
+      "id": "spacing_top_desktop",
+      "label": "Abstand oben Desktop",
+      "min": 0,
+      "max": 150,
+      "step": 2,
+      "unit": "px",
+      "default": 24
+    },
+    {
+      "type": "range",
+      "id": "spacing_bottom_desktop",
+      "label": "Abstand unten Desktop",
+      "min": 0,
+      "max": 150,
+      "step": 2,
+      "unit": "px",
+      "default": 24
+    },
+    {
+      "type": "range",
+      "id": "spacing_top_mobile",
+      "label": "Abstand oben Mobil",
+      "min": 0,
+      "max": 120,
+      "step": 2,
+      "unit": "px",
+      "default": 16
+    },
+    {
+      "type": "range",
+      "id": "spacing_bottom_mobile",
+      "label": "Abstand unten Mobil",
+      "min": 0,
+      "max": 120,
+      "step": 2,
+      "unit": "px",
+      "default": 16
+    },
+    {
+      "type": "header",
+      "content": "Backend"
+    },
+    {
+      "type": "text",
+      "id": "backend_base_url",
+      "label": "Backend Base URL",
+      "default": "https://couple-teeinblue-product-cart-image-production.up.railway.app"
+    }
+  ],
+  "presets": [
+    {
+      "name": "Bundle Engine"
+    }
+  ]
+}
+{% endschema %}
+
+{% comment %} Bundle mappings from app metafields {% endcomment %}
+{% assign bundle_mappings_raw = shop.metafields.boostomize.bundle_mappings.value %}
+{% assign current_product_id = product.id | prepend: "gid://shopify/Product/" %}
+{% assign bundle_found = false %}
+{% assign p1_handle = "" %}
+{% assign p2_handle = "" %}
+{% assign final_p1_opt1 = "" %}
+{% assign final_p1_opt2 = "" %}
+{% assign final_p1_opt3 = "" %}
+{% assign final_p2_opt1 = "" %}
+{% assign final_p2_opt2 = "" %}
+{% assign final_p2_opt3 = "" %}
+
+{% if bundle_mappings_raw %}
+  {% for mapping in bundle_mappings_raw %}
+    {% if mapping.bundle_id == current_product_id %}
+      {% assign bundle_found = true %}
+      {% assign p1_handle = mapping.product_1_handle %}
+      {% assign p2_handle = mapping.product_2_handle %}
+      {% assign final_p1_opt1 = mapping.product_1_option_1_label %}
+      {% assign final_p1_opt2 = mapping.product_1_option_2_label %}
+      {% assign final_p1_opt3 = mapping.product_1_option_3_label %}
+      {% assign final_p2_opt1 = mapping.product_2_option_1_label %}
+      {% assign final_p2_opt2 = mapping.product_2_option_2_label %}
+      {% assign final_p2_opt3 = mapping.product_2_option_3_label %}
+      {% break %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+
+<div
+class="bundle-engine-config"
+data-section-id="{{ section.id }}"
+data-bundle-found="{{ bundle_found }}"
+data-product-1-handle="{{ p1_handle }}"
+data-product-2-handle="{{ p2_handle }}"
+data-product-handle="{{ product.handle }}"
+data-product-title="{{ product.title }}"
+
+data-product1-option1-label="{{ final_p1_opt1 }}"
+data-product1-option2-label="{{ final_p1_opt2 }}"
+data-product1-option3-label="{{ final_p1_opt3 }}"
+
+data-product2-option1-label="{{ final_p2_opt1 }}"
+data-product2-option2-label="{{ final_p2_opt2 }}"
+data-product2-option3-label="{{ final_p2_opt3 }}"
+
+data-show-price-note="{{ section.settings.show_price_note }}"
+data-price-note-text="{{ section.settings.price_note_text | escape }}"
+data-price-note-bg="{{ section.settings.price_note_bg }}"
+data-price-note-text-color="{{ section.settings.price_note_text_color }}"
+data-price-note-margin-top="{{ section.settings.price_note_margin_top }}"
+data-price-note-margin-bottom="{{ section.settings.price_note_margin_bottom }}"
+
+data-discount-type="{{ section.settings.discount_type }}"
+data-discount-value="{{ section.settings.discount_value }}"
+
+data-show-bundle-product-variants="{{ section.settings.show_bundle_product_variants }}"
+data-show-bundle-product-price="{{ section.settings.show_bundle_product_price }}"
+data-after-add-to-cart="{{ section.settings.after_add_to_cart }}"
+
+data-backend-base-url="{{ section.settings.backend_base_url }}"
+style="display:none!important;"
+></div>
+
+<style>
+.bundle-wrapper { margin-top: 24px; }
+.bundle-product-block { margin-bottom: 28px; }
+.bundle-option-title { font-weight: 600; margin-bottom: 10px; font-size: 15px; font-family: inherit; }
+.bundle-variants { display: flex; flex-wrap: wrap; gap: 10px; }
+.bundle-variant-btn { position: relative; padding: 10px 18px; border: 1px solid #d9d9d9; background: #fff; cursor: pointer; border-radius: 8px; font-size: 15px; font-weight: 700; font-family: inherit; transition: all 0.15s ease; color: #000; }
+.bundle-variant-btn:hover { border-color: #000; }
+.bundle-variant-btn.active { border: 2px solid #000; }
+.bundle-variant-btn.active::after { content: "✓"; position: absolute; top: -8px; right: -8px; background: #000; color: #fff; width: 22px; height: 22px; border-radius: 50%; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+
+.bundle-wrapper { margin-top: {{ section.settings.spacing_top_desktop }}px; margin-bottom: {{ section.settings.spacing_bottom_desktop }}px; }
+
+@media(max-width:768px){
+.bundle-wrapper {
+margin-top: {{ section.settings.spacing_top_mobile }}px;
+margin-bottom: {{ section.settings.spacing_bottom_mobile }}px;
+}
+}
+
+.bundle-variant-image { cursor:pointer; border:2px solid transparent; border-radius:8px; }
+.bundle-variant-image.active { border-color:#000; }
+
+.bundle-price-note {
+display:inline-block;
+order:-1;
+position:relative;
+padding:8px 14px;
+border-radius:6px;
+font-weight:700;
+font-size:14px;
+margin-top:{{ section.settings.price_note_margin_top }}px;
+margin-bottom:{{ section.settings.price_note_margin_bottom }}px;
+background:{{ section.settings.price_note_bg }};
+color:{{ section.settings.price_note_text_color }};
+}
+
+.bundle-price-note::after {
+content:"";
+position:absolute;
+bottom:-8px;
+left:14px;
+border-left:8px solid transparent;
+border-right:8px solid transparent;
+border-top:8px solid {{ section.settings.price_note_bg }};
+}
+
+/* Price note: force column layout ONLY on product page price containers */
+/* Scoped: only targets elements that directly contain our .bundle-price-note */
+/* Uses :not(.cart-drawer) etc. to exclude cart areas */
+section[id*="template"] *:has(> .bundle-price-note),
+.product__info-container *:has(> .bundle-price-note),
+.product-information *:has(> .bundle-price-note),
+[id^="price-template"] *:has(> .bundle-price-note) {
+display:flex !important;
+flex-direction:column !important;
+align-items:flex-start !important;
+}
+/* Fallback for the known Dawn class – only when bundle-price-note is present */
+.product__info-container .product-information-price-container:has(> .bundle-price-note) {
+flex-direction:column;
+align-items:flex-start;
+}
+</style>
+
+<script>
+window.BundleEngineProduct = {{ product | json }};
+</script>
+
+<script
+src="https://bundle-engine.pages.dev/bundle-engine.min.js"
+defer crossorigin="anonymous">
+</script>
