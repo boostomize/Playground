@@ -1,0 +1,950 @@
+let _bundleImageMap = {};
+let _bundleImageObserver = null;
+
+function _applyBundleImages() {
+  if (Object.keys(_bundleImageMap).length === 0) return;
+
+  // Drawer: [data-index] Zeilen
+  document.querySelectorAll("[data-index]").forEach((row) => {
+    const lineIndex = parseInt(row.dataset.index);
+    const customImg = _bundleImageMap[lineIndex];
+    if (!customImg) return;
+    const img =
+      row.querySelector(".tee-cart-thumbnail__link img") ||
+      row.querySelector(".cart-item__image");
+    if (img && !img.src.includes("img.boostomize.de")) {
+      img.src    = customImg;
+      img.srcset = "";
+    }
+  });
+
+  // Cart-Seite: #CartItem-{index} Zeilen
+  Object.keys(_bundleImageMap).forEach((lineIndex) => {
+    const customImg = _bundleImageMap[lineIndex];
+    const row = document.getElementById(`CartItem-${lineIndex}`);
+    if (!row) return;
+    const img =
+      row.querySelector(".tee-cart-thumbnail__link img") ||
+      row.querySelector(".cart-item__image");
+    if (img && !img.src.includes("img.boostomize.de")) {
+      img.src    = customImg;
+      img.srcset = "";
+    }
+  });
+}
+
+function _startBundleImageObserver() {
+  // Bestehenden Observer stoppen
+  if (_bundleImageObserver) _bundleImageObserver.disconnect();
+
+  // Dauerhafter Observer – reagiert sofort auf jede img.src Änderung
+  // Kein Timeout: läuft solange die Seite offen ist damit TeeinBlue
+  // nie ein falsches Bild dauerhaft anzeigen kann
+  _bundleImageObserver = new MutationObserver((mutations) => {
+    let relevant = false;
+    for (const m of mutations) {
+      // Nur reagieren wenn src sich ändert und es NICHT schon unser Bild ist
+      if (m.type === "attributes" && m.attributeName === "src") {
+        const el = m.target;
+      if (el.tagName === "IMG" && !el.src.includes("img.boostomize.de")) {
+  relevant = true;
+          break;
+        }
+      }
+      if (m.type === "childList") { relevant = true; break; }
+    }
+    if (relevant) _applyBundleImages();
+  });
+
+  _bundleImageObserver.observe(document.body, {
+    subtree:         true,
+    attributes:      true,
+    attributeFilter: ["src"],
+    childList:       true,
+  });
+}
+
+async function fixTeeinBlueImages() {
+  try {
+    const cartRoot = window.Shopify?.routes?.root || "/";
+    const freshCart = await fetch(`${cartRoot}cart.js`).then((r) => r.json());
+
+    // Bundle-Items Map aufbauen
+    _bundleImageMap = {};
+    freshCart.items.forEach((item, i) => {
+      if (item.properties?._is_bundle === "true" && item.properties?._customization_image) {
+        _bundleImageMap[i + 1] = item.properties._customization_image;
+      }
+    });
+
+    if (Object.keys(_bundleImageMap).length === 0) return;
+
+    // Observer ZUERST starten – dann sofort anwenden
+    // So wird jede TeeinBlue-Änderung sofort überschrieben (kein Flackern)
+    _startBundleImageObserver();
+    _applyBundleImages();
+
+  } catch (e) {
+    console.warn("Bundle Engine – TeeinBlue Bild-Fix Fehler:", e);
+  }
+}
+
+async function initBundleEngine() {
+  const config = document.querySelector(".bundle-engine-config");
+  if (!config) return;
+
+  const bundleProduct = window.BundleEngineProduct || {};
+  const bundleFound   = config.dataset.bundleFound === "true";
+  if (!bundleFound) {
+    console.log("Bundle Engine: No mapping found");
+    return;
+  }
+
+  const handles = [
+    config.getAttribute("data-product-1-handle"),
+    config.getAttribute("data-product-2-handle"),
+  ];
+  if (!handles[0] || !handles[1]) return;
+
+  const discountType              = config.dataset.discountType || "percent";
+  const discountValue             = parseFloat(config.dataset.discountValue || 0);
+  const showBundleProductVariants = config.dataset.showBundleProductVariants === "true";
+  const showBundleProductPrice    = config.dataset.showBundleProductPrice    === "true";
+  const afterAddToCart            = config.dataset.afterAddToCart || "redirect";
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // THEME DETECTION
+  // Priorität: config-Attribut > Shopify.theme.schema_name > JS-Globals > DOM
+  //
+  // Shopify setzt window.Shopify.theme.schema_name im Quellcode jeder Seite:
+  //   Shopify.theme = { schema_name: "Dawn", schema_version: "15.4.1", ... }
+  // Das ist die zuverlässigste Methode – theme-agnostisch, immer verfügbar.
+  // ══════════════════════════════════════════════════════════════════════════
+  function detectTheme() {
+    // 1. Explizite Angabe im config-Element hat immer Vorrang (data-theme="dawn")
+    const forced = config.dataset.theme?.toLowerCase();
+    if (forced) return forced;
+
+    // 2. Shopify.theme.schema_name – gesetzt von Shopify selbst, unabhängig vom Theme-Code
+    const schemaName = window.Shopify?.theme?.schema_name?.toLowerCase();
+    if (schemaName) {
+      if (schemaName === "dawn")    return "dawn";
+      if (schemaName === "impact")  return "impact";
+      if (schemaName === "conrise") return "conrise";
+      console.log(`Bundle Engine: schema_name="${schemaName}" – kein spezifischer Handler, nutze generic`);
+      return schemaName; // rohen Namen als ID weitergeben
+    }
+
+    // 3. JS-Globals als Fallback (falls schema_name nicht verfügbar)
+    if (typeof window.themeVariables !== "undefined") return "impact"; // Maestrooo
+    if (typeof window.routes         !== "undefined") return "dawn";   // Shopify-eigene
+
+    // 4. DOM-Fingerprint als letzter Fallback
+    if (document.querySelector("form[is='product-form']"))            return "impact";
+    if (document.querySelector("form[data-type='add-to-cart-form']")) return "dawn";
+
+    return "generic";
+  }
+
+  const THEME = detectTheme();
+  console.log(`Bundle Engine: Theme erkannt → "${THEME}"`);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FORM SELECTOR (je nach Theme)
+  // ══════════════════════════════════════════════════════════════════════════
+  function findForm() {
+    if (THEME === "impact") {
+      return document.querySelector("form[is='product-form'][action*='/cart/add']");
+    }
+    if (THEME === "dawn") {
+      // Dawn wraps the <form> in a <product-form> custom element
+      // Das <form>-Element trägt data-type="add-to-cart-form"
+      return document.querySelector("form[data-type='add-to-cart-form']");
+    }
+    // Generischer Fallback
+    return (
+      document.querySelector("form[is='product-form'][action*='/cart/add']") ||
+      document.querySelector("form[data-type='add-to-cart-form']")           ||
+      document.querySelector("form[action*='/cart/add']")
+    );
+  }
+
+  const form = findForm();
+  console.log("Bundle Engine form:", form?.id || form?.className);
+  if (!form) return;
+
+  // ── Cleanup alter Bundle-Elemente ─────────────────────────────────────────
+  document.querySelectorAll(".bundle-wrapper").forEach((el) => el.remove());
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // CART-ROOT (Dawn nutzt Shopify.routes.root, Impact window.Shopify.routes)
+  // ══════════════════════════════════════════════════════════════════════════
+  const cartRoot = (window.Shopify?.routes?.root) || "/";
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PREIS-NOTIZ BADGE
+  // ══════════════════════════════════════════════════════════════════════════
+  if (config.dataset.showPriceNote === "true") {
+    function insertBundlePriceNote() {
+      if (document.querySelector(".bundle-price-note")) return;
+
+      // Zuverlässigster Ansatz: Note direkt als erstes Kind in den
+      // #price-{sectionId} Block einfügen – damit ist sie immer genau
+      // über dem Preis-Text, unabhängig davon wo der Block im DOM steht.
+      // Wir scopen die Suche auf ProductInfo um nur den Hauptpreis zu treffen.
+      const productInfo =
+        document.querySelector("[id^='ProductInfo-']") ||
+        document.querySelector(".product__info-container");
+
+      // Suche nur DIREKTE Kinder von productInfo mit id="price-*"
+      // damit kein verschachtelter price-* Container gematch wird
+      let priceEl = null;
+      if (productInfo) {
+        for (const child of productInfo.children) {
+          if (child.id && child.id.startsWith("price-")) {
+            priceEl = child;
+            break;
+          }
+        }
+      }
+      if (!priceEl) priceEl = document.querySelector("[id^='price-']");
+
+      // Fallback fuer andere Themes
+      if (!priceEl) {
+        for (const sel of [".price-list.price-list--lg", ".product__price", "[data-product-price]"]) {
+          const el = (productInfo || document).querySelector(sel);
+          if (el) { priceEl = el; break; }
+        }
+      }
+
+      if (!priceEl) return;
+
+      const note = document.createElement("div");
+      note.className = "bundle-price-note";
+      note.innerText = config.dataset.priceNoteText;
+      note.style.background   = config.dataset.priceNoteBg;
+      note.style.color        = config.dataset.priceNoteTextColor;
+      note.style.marginBottom = (config.dataset.priceNoteMarginBottom || "8") + "px";
+      note.style.marginTop    = (config.dataset.priceNoteMarginTop    || "0")  + "px";
+
+      if (!document.querySelector(".bundle-price-note-style")) {
+        const s = document.createElement("style");
+        s.className = "bundle-price-note-style";
+        s.textContent = `.bundle-price-note::after { border-top: 8px solid ${config.dataset.priceNoteBg}; }`;
+        document.head.appendChild(s);
+      }
+
+      // Als erstes Kind des price-Blocks einfügen (innerhalb, über dem Preis-Text)
+      priceEl.prepend(note);
+    }
+    insertBundlePriceNote();
+    new MutationObserver(insertBundlePriceNote).observe(document.body, { childList: true, subtree: true });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // HILFSFUNKTIONEN
+  // ══════════════════════════════════════════════════════════════════════════
+  const BUNDLE_VARIANTS = Array.isArray(bundleProduct.variants) ? bundleProduct.variants : [];
+  const BUNDLE_OPTIONS  = Array.isArray(bundleProduct.options)  ? bundleProduct.options  : [];
+
+  const COLOR_OPTION_ALIASES = [
+    "farbe","color","colour","couleur","colore","kleur","cor",
+    "색상","カラー","цвет","kolor","culoare","boja","färg",
+  ];
+
+  function normalizeStr(s) { return (s || "").toString().trim().toLowerCase(); }
+
+  function isColorOptionName(name) {
+    const n = normalizeStr(name);
+    return n ? COLOR_OPTION_ALIASES.some((a) => n === a || n.includes(a)) : false;
+  }
+
+  // getOptionName: /products/handle.js gibt options als Strings zurück
+  function getOptionName(opt) {
+    return typeof opt === "string" ? opt : (opt?.name || opt?.value || "");
+  }
+
+  function formatMoney(cents) {
+    return (cents / 100).toLocaleString("de-DE", {
+      style: "currency",
+      currency: Shopify.currency.active,
+    });
+  }
+
+  // ── Variant-Block aus dem Formular ───────────────────────────────────────
+  const variantBlock =
+    form.querySelector(".product-form__input") ||
+    form.querySelector("[class*='variant']")   ||
+    form.querySelector("fieldset");
+
+  if (variantBlock && !showBundleProductVariants) variantBlock.style.display = "none";
+
+  // ── Bundle-Wrapper einfügen ──────────────────────────────────────────────
+  const bundleWrapper = document.createElement("div");
+  bundleWrapper.className = "bundle-wrapper";
+
+  const customTarget = document.querySelector("[data-bundle-variants]");
+  if (customTarget) {
+    customTarget.innerHTML = "";
+    customTarget.appendChild(bundleWrapper);
+  } else if (variantBlock) {
+    variantBlock.parentNode.insertBefore(bundleWrapper, variantBlock.nextSibling);
+  } else {
+    form.prepend(bundleWrapper);
+  }
+
+  // ── Beide Bundle-Produkte laden ──────────────────────────────────────────
+  let products = [];
+  for (const handle of handles) {
+    const res = await fetch(`/products/${handle}.js`);
+    products.push(await res.json());
+  }
+
+  const CUSTOM_OPTION_LABELS = {
+    0: { 0: config.dataset.product1Option1Label || "", 1: config.dataset.product1Option2Label || "", 2: config.dataset.product1Option3Label || "" },
+    1: { 0: config.dataset.product2Option1Label || "", 1: config.dataset.product2Option2Label || "", 2: config.dataset.product2Option3Label || "" },
+  };
+
+  const selectedOptions = {};
+
+  // ── Farb-Sync vom Bundle-Produkt auf die Sub-Produkte ───────────────────
+  function getBundleSelectedColorValue() {
+    const variantIdInput = form.querySelector("input[name='id']");
+    if (!variantIdInput?.value) return "";
+    const vid = parseInt(variantIdInput.value, 10);
+    if (!vid) return "";
+    let colorIdx = -1;
+    for (let i = 0; i < BUNDLE_OPTIONS.length; i++) {
+      if (isColorOptionName(getOptionName(BUNDLE_OPTIONS[i]))) { colorIdx = i; break; }
+    }
+    if (colorIdx === -1) return "";
+    const v = BUNDLE_VARIANTS.find((x) => x.id === vid);
+    return v ? v["option" + (colorIdx + 1)] || "" : "";
+  }
+
+  function applyBundleColorToProducts() {
+    const raw = getBundleSelectedColorValue();
+    if (!raw) return;
+    const parts = raw.split("/").map((p) => p.trim());
+    products.forEach((product, index) => {
+      const target = normalizeStr(parts.length > 1 ? parts[index] || parts[0] : parts[0]);
+      let colorOptIdx = -1;
+      product.options.forEach((opt, i) => { if (isColorOptionName(getOptionName(opt))) colorOptIdx = i; });
+      if (colorOptIdx === -1) return;
+      const key   = "option" + (colorOptIdx + 1);
+      const match = product.variants.find((v) => normalizeStr(v[key]) === target);
+      if (match) selectedOptions[index][key] = match[key];
+    });
+  }
+
+  // ── Option-Picker rendern ────────────────────────────────────────────────
+  products.forEach((product, productIndex) => {
+    const block = document.createElement("div");
+    block.className = "bundle-product-block";
+    selectedOptions[productIndex] = {};
+    let visibleIdx = 0;
+
+    product.options.forEach((optionObj, optionIndex) => {
+      const optionName = getOptionName(optionObj);
+      const optionKey  = "option" + (optionIndex + 1);
+      const values     = [...new Set(product.variants.map((v) => v[optionKey]).filter(Boolean))];
+
+      if (isColorOptionName(optionName)) {
+        selectedOptions[productIndex][optionKey] = values[0];
+        return;
+      }
+      if (values.length <= 1) {
+        selectedOptions[productIndex][optionKey] = values[0];
+        return;
+      }
+
+      const optionWrapper    = document.createElement("div");
+      const optionTitle      = document.createElement("div");
+      optionTitle.className  = "bundle-option-title";
+      const customLabel = CUSTOM_OPTION_LABELS[productIndex]?.[visibleIdx];
+      optionTitle.textContent = customLabel?.trim() ? customLabel : optionName;
+
+      const variantContainer = document.createElement("div");
+      variantContainer.className = "bundle-variants";
+
+      values.forEach((value, index) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "bundle-variant-btn";
+        btn.textContent = value;
+        if (index === 0) {
+          btn.classList.add("active");
+          selectedOptions[productIndex][optionKey] = value;
+        }
+        btn.addEventListener("click", () => {
+          variantContainer.querySelectorAll(".bundle-variant-btn").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          selectedOptions[productIndex][optionKey] = value;
+          calculateTotal();
+        });
+        variantContainer.appendChild(btn);
+      });
+
+      optionWrapper.appendChild(optionTitle);
+      optionWrapper.appendChild(variantContainer);
+      block.appendChild(optionWrapper);
+      visibleIdx++;
+    });
+
+    bundleWrapper.appendChild(block);
+  });
+
+  // ── Varianten & Preis ────────────────────────────────────────────────────
+  function getSelectedVariant(product, productIndex) {
+    const opts = selectedOptions[productIndex];
+    return product.variants.find((variant) =>
+      product.options.every((_, i) => variant["option" + (i + 1)] === opts["option" + (i + 1)])
+    );
+  }
+
+  function updateDisplayedPrice(newPriceCents) {
+    const formatted = formatMoney(newPriceCents);
+    [
+      "[data-product-price]",
+      ".price-list.price-list--lg",
+      ".product__price",
+      ".product-price",
+    ].forEach((sel) => {
+      document.querySelectorAll(sel).forEach((el) => { el.innerHTML = formatted; });
+    });
+
+    // Dawn: price-item--regular Spans direkt überschreiben (MutationObserver schützt sie)
+    if (THEME === "dawn") {
+      const priceSection =
+        document.querySelector("[id^='ProductInfo-']") ||
+        document.querySelector(".product__info-container") ||
+        document;
+      const container = priceSection.querySelector("[id^='price-']");
+      if (container) {
+        container.querySelectorAll(".price-item--regular").forEach((el) => {
+          el.textContent = formatted;
+        });
+      }
+    }
+  }
+
+  // Dawn: MutationObserver auf Preis-Container, damit Dawn-Variant-Change ihn nicht überschreibt
+  let _dawnPriceObserver   = null;
+  let _dawnLastPriceCents  = null;
+
+  function startDawnPriceObserver(cents) {
+    if (THEME !== "dawn") return;
+    _dawnLastPriceCents = cents;
+    if (_dawnPriceObserver) _dawnPriceObserver.disconnect();
+
+    const priceSection =
+      document.querySelector("[id^='ProductInfo-']") ||
+      document.querySelector(".product__info-container") ||
+      document;
+    const container = priceSection?.querySelector("[id^='price-']");
+    if (!container) return;
+
+    _dawnPriceObserver = new MutationObserver(() => {
+      _dawnPriceObserver.disconnect();
+      container.querySelectorAll(".price-item--regular").forEach((el) => {
+        el.textContent = formatMoney(_dawnLastPriceCents);
+      });
+      _dawnPriceObserver.observe(container, { childList: true, subtree: true, characterData: true });
+    });
+    _dawnPriceObserver.observe(container, { childList: true, subtree: true, characterData: true });
+  }
+
+  function calculateTotal() {
+    if (showBundleProductPrice) return;
+    let total = 0;
+    products.forEach((product, i) => {
+      const variant = getSelectedVariant(product, i);
+      if (variant) total += variant.price;
+    });
+    if (discountValue > 0) {
+      total -= discountType === "percent" ? (total * discountValue) / 100 : discountValue * 100;
+    }
+    if (total < 0) total = 0;
+    updateDisplayedPrice(total);
+    startDawnPriceObserver(total);
+  }
+
+  function getBundleProperties() {
+    const props = {};
+    form.querySelectorAll("input[name^='properties[']").forEach((input) => {
+      const m = input.name.match(/properties\[(.*?)\]/);
+      if (m?.[1]) props[m[1]] = input.value;
+    });
+    return props;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DRAWER ÖFFNEN – DAWN
+  // Dawn's CartDrawer aktualisiert sich via renderContents(response).
+  // Die Sections müssen im /cart/add.js Request enthalten sein.
+  // ══════════════════════════════════════════════════════════════════════════
+  // Dawn's eigenes Muster (aus product-form.js):
+  // this.cart = document.querySelector('cart-notification') || document.querySelector('cart-drawer')
+  // Beide möglichen Cart-Elemente prüfen – welches im DOM ist hängt von Theme-Einstellung ab.
+  function getDawnCartElement() {
+    return (
+      document.querySelector("cart-notification") ||
+      document.querySelector("cart-drawer")
+    );
+  }
+
+  function getDawnSectionsToRender() {
+    const cart = getDawnCartElement();
+    if (!cart?.getSectionsToRender) return [];
+    return cart.getSectionsToRender().map((s) => s.id);
+  }
+
+  async function openDawnDrawer(addResponse) {
+    const cart = getDawnCartElement();
+    if (!cart) {
+      console.warn("Bundle Engine: Kein cart-drawer oder cart-notification im DOM gefunden");
+      return;
+    }
+
+    console.log("Bundle Engine: Cart-Element gefunden:", cart.tagName);
+
+    // Sections IMMER frisch fetchen – nie aus addResponse.sections nutzen.
+    // Grund: addResponse.sections wird zum Zeitpunkt des /cart/add.js Requests gerendert.
+    // TeeinBlue hat dann noch nicht unsere Bundle-Items verarbeitet → falsches Bild.
+    // Durch separaten Fetch NACH dem Add hat TeeinBlue Zeit die Items zu verarbeiten
+    // und die Section enthält die korrekten _customization_image Bilder.
+    const sectionIds = getDawnSectionsToRender();
+    console.log("Bundle Engine: Lade Drawer-Sections frisch...");
+    try {
+      const htmlList = await Promise.all(
+        sectionIds.map((id) =>
+          fetch(`${cartRoot}?section_id=${id}`).then((r) => r.text())
+        )
+      );
+      if (!addResponse.sections) addResponse.sections = {};
+      sectionIds.forEach((id, i) => {
+        addResponse.sections[id] = htmlList[i];
+      });
+      console.log("Bundle Engine: Sections frisch geladen ✅");
+    } catch (err) {
+      console.warn("Bundle Engine – Sections fetch Fehler:", err);
+    }
+
+    // renderContents aufrufen – genau wie product-form.js es macht
+    try {
+      cart.renderContents(addResponse);
+      console.log("Bundle Engine: renderContents aufgerufen ✅");
+    } catch (err) {
+      console.warn("Bundle Engine – renderContents Fehler:", err);
+      // Fallback: direkt öffnen
+      try { cart.open?.(); } catch(_) {}
+    }
+
+    // is-empty entfernen – nach renderContents, wie product-form.js finally() es macht
+    // is-empty entfernen – nach renderContents, wie product-form.js finally() es macht
+    cart.classList.remove("is-empty");
+
+    // PubSub: Zähler + andere Subscriber informieren
+    if (typeof publish !== "undefined" && typeof PUB_SUB_EVENTS !== "undefined") {
+      publish(PUB_SUB_EVENTS.cartUpdate, {
+        source: "product-form",
+        cartData: addResponse,
+      });
+    }
+
+    // TeeinBlue Bild-Fix nach Drawer-Update starten
+    fixTeeinBlueImages();
+  }
+
+  // DRAWER ÖFFNEN – IMPACT
+  // Impact's CartDrawer reagiert auf Custom Events auf document/documentElement:
+  //   "variant:add"  → CartDrawer._onVariantAdded → this.show()
+  //   "cart:change"  → CartDrawer._onCartChanged  → Inhalt aktualisieren
+  // ══════════════════════════════════════════════════════════════════════════
+  async function openImpactDrawer(addResponse) {
+    try {
+      const sectionsToBundle = ["variant-added"];
+      document.documentElement.dispatchEvent(
+        new CustomEvent("cart:prepare-bundled-sections", {
+          bubbles: true,
+          detail: { sections: sectionsToBundle },
+        })
+      );
+      // CartDrawer hat seine Section-ID (z.B. "cart-drawer") in sectionsToBundle gepusht
+
+      const [cartData, ...sectionHtmlList] = await Promise.all([
+        fetch(`${cartRoot}cart.js`).then((r) => r.json()),
+        ...sectionsToBundle.map((id) =>
+          fetch(`${cartRoot}?section_id=${id}`).then((r) => r.text())
+        ),
+      ]);
+
+      cartData.sections = {};
+      sectionsToBundle.forEach((id, i) => {
+        cartData.sections[id] = sectionHtmlList[i];
+      });
+
+      document.dispatchEvent(
+        new CustomEvent("variant:add", {
+          bubbles: true,
+          detail: {
+            items: Array.isArray(addResponse.items) ? addResponse.items : [addResponse],
+            cart: cartData,
+          },
+        })
+      );
+
+      document.documentElement.dispatchEvent(
+        new CustomEvent("cart:change", {
+          bubbles: true,
+          detail: { baseEvent: "variant:add", cart: cartData },
+        })
+      );
+    } catch (err) {
+      console.warn("Bundle Engine – Impact drawer sections failed, fallback:", err);
+      document.dispatchEvent(new CustomEvent("cart:refresh"));
+    }
+  }
+
+  // ── Generischer Fallback-Drawer ──────────────────────────────────────────
+  // ── Conrise Drawer öffnen ────────────────────────────────────────────────
+  // Conrise nutzt jQuery + eigene reloadCart() + openCartDrawer() Funktionen.
+  // reloadCart: fetcht ?sections=cart-drawer → ersetzt #shopify-section-cart-drawer
+  // openCartDrawer: setzt CSS visibility/transform via jQuery
+  async function openConriseDrawer() {
+    try {
+      // 1. Drawer-HTML frisch von Shopify fetchen und ins DOM schreiben
+      const cartRoot = window.Shopify?.routes?.root || "/";
+      const data = await fetch(`${cartRoot}?sections=cart-drawer`).then(r => r.json());
+
+      if (data?.["cart-drawer"]) {
+        const section = document.getElementById("shopify-section-cart-drawer");
+        if (section) {
+          section.outerHTML = data["cart-drawer"];
+        }
+
+        // Zähler im Header aktualisieren (Conrise-spezifisch)
+        const drawerContent = document.querySelector(".cart-drawer-content");
+        const totalQty = parseInt(drawerContent?.dataset?.itemCount || 0);
+        const countEl = document.getElementById("header-cart-drawer-item-count");
+        if (countEl) {
+          countEl.textContent = totalQty;
+          totalQty > 0 ? countEl.style.display = "" : countEl.style.display = "none";
+        }
+      }
+
+      // 2. Drawer öffnen – Conrise's eigene openCartDrawer() nutzen wenn verfügbar
+      if (typeof window.openCartDrawer === "function") {
+        window.openCartDrawer();
+      } else {
+        // Fallback: CSS direkt setzen wie Conrise es macht
+        const drawer = document.getElementById("cart-drawer");
+        const overlay = document.getElementById("cart-drawer-overlay");
+        const content = document.querySelector("#cart-drawer .cart-drawer-content");
+        if (drawer)  drawer.style.visibility = "visible";
+        if (overlay) overlay.style.opacity = "0.5";
+        if (content) {
+          content.style.width = window.innerWidth < 768 ? "100%" : "35%";
+          content.style.transform = "translateX(0%)";
+        }
+        document.body.classList.add("overflow-hidden");
+      }
+
+    } catch (err) {
+      console.warn("Bundle Engine – Conrise Drawer Fehler:", err);
+    }
+  }
+
+  function openGenericDrawer() {
+    const cd = document.querySelector("cart-drawer");
+    if (cd) {
+      if (typeof cd.open   === "function") return cd.open();
+      if (typeof cd.show   === "function") return cd.show();
+      cd.classList.add("active", "is-open");
+      cd.removeAttribute("hidden");
+      document.body.classList.add("overflow-hidden");
+    }
+  }
+
+  // ── Zentraler Dispatcher ─────────────────────────────────────────────────
+  async function openCartDrawer(addResponse) {
+    if (THEME === "dawn")    return openDawnDrawer(addResponse);
+    if (THEME === "impact")  return openImpactDrawer(addResponse);
+    if (THEME === "conrise") return openConriseDrawer();
+    return openGenericDrawer();
+  }
+
+  // ── Cart-Zähler Fallback ─────────────────────────────────────────────────
+  function updateCartCount() {
+    fetch(`${cartRoot}cart.js`).then((r) => r.json()).then((cart) => {
+      document.querySelectorAll(
+        ".cart-count-bubble span,.cart-count,[data-cart-count],.cart-item-count,.js-cart-count,cart-count"
+      ).forEach((el) => {
+        el.textContent = cart.item_count;
+        el.closest("[hidden]")?.removeAttribute("hidden");
+      });
+      const icon = document.querySelector(
+        ".cart-icon-bubble,[data-cart-icon],.cart-count-bubble,.header__icon--cart"
+      );
+      if (icon) {
+        icon.style.transform = "scale(1.3)";
+        setTimeout(() => (icon.style.transform = ""), 300);
+      }
+    }).catch(() => {});
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SUBMIT-BUTTON LOADING STATE
+  // ══════════════════════════════════════════════════════════════════════════
+  function setSubmitLoading(loading) {
+    // Nach dem Button-Hijack ist type="button", nicht mehr "submit".
+    // Wir suchen per data-bundle-hijacked (gesetzt von hijackSubmitButton).
+    // Fallback auf type="submit" für Impact (kein Hijack nötig dort).
+    const submitButtons = THEME === "impact"
+      ? Array.from(form.elements).filter((el) => el.type === "submit")
+      : [
+          document.querySelector('[data-bundle-hijacked]') ||
+          form.querySelector('[type="submit"]')
+        ].filter(Boolean);
+
+    submitButtons.forEach((btn) => {
+      if (loading) {
+        btn.setAttribute("disabled", "disabled");
+        btn.setAttribute("aria-disabled", "true");
+        btn.setAttribute("aria-busy", "true");
+        btn.classList.add("loading");
+        btn.querySelector?.(".loading__spinner")?.classList.remove("hidden");
+      } else {
+        btn.removeAttribute("disabled");
+        btn.removeAttribute("aria-disabled");
+        btn.removeAttribute("aria-busy");
+        btn.classList.remove("loading");
+        btn.querySelector?.(".loading__spinner")?.classList.add("hidden");
+      }
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // KERNFUNKTION: Bundle in Warenkorb legen
+  // ══════════════════════════════════════════════════════════════════════════
+  let isAdding = false;
+
+  async function handleBundleSubmit(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation(); // blockiert ProductForm._onSubmit (Impact) und product-form.js (Dawn)
+
+    if (isAdding) return;
+    isAdding = true;
+    setSubmitLoading(true);
+
+    try {
+      applyBundleColorToProducts();
+
+      // Variant-ID leeren → kein Haupt-Produkt landet im Warenkorb
+      const variantInput = form.querySelector("input[name='id']");
+      if (variantInput) variantInput.value = "";
+
+      const bundleProps = getBundleProperties();
+      const bundleId    = "bundle_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+
+      const items = [];
+const CROPPER_BASE = config.dataset.backendBaseUrl || "";
+const origImg      = bundleProps._customization_image || "";
+const encodedSrc   = encodeURIComponent(origImg);
+
+console.log("Bundle Engine: origImg =", origImg);
+const imageUrls = await Promise.all(
+  products.map((_, index) => {
+    if (!origImg) return Promise.resolve(null);
+    const focus = index === 0 ? "left" : "right";
+    const url = `${CROPPER_BASE}/make?src=${encodedSrc}&focus=${focus}`;
+    console.log("Bundle Engine: /make fetch →", url);
+    return fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        console.log("Bundle Engine: /make response →", data);
+        return data.ok ? data.url : null;
+      })
+      .catch((err) => {
+        console.warn("Bundle Engine: /make Fehler →", err);
+        return null;
+      });
+  })
+);
+console.log("Bundle Engine: imageUrls =", imageUrls);
+
+products.forEach((product, index) => {
+  const variant = getSelectedVariant(product, index);
+  if (!variant) return;
+
+  const properties = {
+    _bundle_id:     bundleId,
+    _is_bundle:     "true",
+    _bundle_handle: config.dataset.productHandle || bundleProduct.handle || "",
+    _bundle_title:  config.dataset.productTitle  || bundleProduct.title  || "",
+  };
+
+  if (imageUrls[index]) {
+    properties._customization_image = imageUrls[index];
+  }
+
+        // Produkt-spezifische Properties
+        // _customization_id an beide Bundle-Produkte weitergeben (essentiell für TeeinBlue).
+        // Die Bilder werden danach von fixTeeinBlueImages() mit _customization_image überschrieben.
+        if (bundleProps._customization_id) {
+          properties._customization_id = bundleProps._customization_id;
+        }
+
+        // _tib_design_link Logik:
+        // Hat das Main-Produkt BEIDE Links (_tib_design_link_1 + _tib_design_link_2):
+        //   → Produkt 0 bekommt _tib_design_link_1, Produkt 1 bekommt _tib_design_link_2
+        // Hat das Main-Produkt nur _tib_design_link_1 (oder keinen _tib_design_link_2):
+        //   → BEIDE Bundle-Produkte bekommen _tib_design_link_1
+        const hasBothLinks = bundleProps._tib_design_link_1 && bundleProps._tib_design_link_2;
+        if (hasBothLinks) {
+          if (index === 0 && bundleProps._tib_design_link_1) properties._tib_design_link_1 = bundleProps._tib_design_link_1;
+          if (index === 1 && bundleProps._tib_design_link_2) properties._tib_design_link_2 = bundleProps._tib_design_link_2;
+        } else {
+          // Nur link_1 vorhanden → beide Produkte bekommen ihn
+          if (bundleProps._tib_design_link_1) properties._tib_design_link_1 = bundleProps._tib_design_link_1;
+        }
+
+        items.push({ id: variant.id, quantity: 1, properties });
+      });
+
+      if (items.length === 0) {
+        console.warn("Bundle Engine: Keine gültigen Varianten ausgewählt");
+        return;
+      }
+
+      // Dawn erwartet FormData (nicht JSON) damit Shopify die Sections
+      // im Response mitliefert. Exakt wie product-form.js:
+      //   delete config.headers['Content-Type']  → Browser setzt multipart automatisch
+      //   formData.append('sections', array)
+      //   formData.append('sections_url', pathname)
+      const formData = new FormData();
+
+      // Bundle-Items als FormData-Arrays
+      items.forEach((item) => {
+        formData.append("items[][id]",       item.id);
+        formData.append("items[][quantity]",  item.quantity);
+        Object.entries(item.properties || {}).forEach(([k, v]) => {
+          formData.append(`items[][properties][${k}]`, v);
+        });
+      });
+
+      // Sections werden NICHT im FormData-Request mitgeschickt.
+      // Grund: Shopify rendert sections zum Zeitpunkt des Requests – zu früh.
+      // TeeinBlue hat dann noch nicht unsere Bundle-Items verarbeitet und nutzt
+      // das Main-Produkt-Bild. Stattdessen fetchen wir sections SEPARAT nach dem Add
+      // (in openDawnDrawer), so dass TeeinBlue die korrekten Items im Cart vorfindet.
+
+      const resp = await fetch(`${cartRoot}cart/add.js`, {
+        method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        // KEIN Content-Type Header → Browser setzt multipart/form-data automatisch
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        console.error("Bundle Engine – cart/add.js Fehler:", resp.status, await resp.text());
+        return;
+      }
+
+      const addResponse = await resp.json();
+
+      if (afterAddToCart === "redirect") {
+        window.location.replace(`${cartRoot}cart`);
+        return;
+      }
+
+      await openCartDrawer(addResponse);
+      updateCartCount();
+
+    } catch (err) {
+      console.error("Bundle Engine – Fehler beim Hinzufügen:", err);
+    } finally {
+      isAdding = false;
+      setSubmitLoading(false);
+    }
+  }
+
+  // ══ Submit blockieren: document.body MutationObserver + Button-Hijack ════════
+  // Warum document.body beobachten statt formParent:
+  // Dawn rendert den Submit-Button u.U. NACH DOMContentLoaded (deferred scripts,
+  // Custom Element connectedCallback, Variant-Wechsel). Ein Observer auf einem
+  // bereits im DOM befindlichen Elternelement reicht nicht – wir brauchen den
+  // breitesten möglichen Scope damit wir den Button immer erwischen.
+
+  function hijackSubmitButton() {
+    const currentForm = findForm();
+    if (!currentForm) return;
+
+    // Suche unhijackten Submit-Button in der Form
+    const btn = currentForm.querySelector('[type="submit"]:not([data-bundle-hijacked])');
+    if (!btn) return; // bereits hijackt oder nicht vorhanden
+
+    btn.dataset.bundleHijacked = "true";
+    btn.type = "button"; // Form kann nicht mehr nativ submitten
+
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+
+      const syntheticEvent = {
+        preventDefault:           () => {},
+        stopPropagation:          () => {},
+        stopImmediatePropagation: () => {},
+        target: currentForm,
+      };
+      handleBundleSubmit(syntheticEvent);
+    });
+
+    console.log("Bundle Engine: Submit-Button übernommen ✅");
+  }
+
+  // Einmaligen globalen Observer auf document.body registrieren.
+  // Er läuft die gesamte Sitzung und hijackt den Button sobald Dawn ihn rendert
+  // oder ersetzt – unabhängig vom Timing.
+  if (!document.__bundleEngineObserving) {
+    document.__bundleEngineObserving = true;
+
+    // Sofortversuch
+    hijackSubmitButton();
+
+    // Dauerhafter Observer – fängt jeden späteren Render ab
+    new MutationObserver(() => hijackSubmitButton())
+      .observe(document.body, { childList: true, subtree: true });
+  } else {
+    // Zweiter initBundleEngine-Aufruf (section:load etc.) – frisch hijacken
+    hijackSubmitButton();
+  }
+
+  // ── Reaktivität ──────────────────────────────────────────────────────────
+  form.addEventListener("change", () => { applyBundleColorToProducts(); calculateTotal(); });
+
+  const variantIdInput = form.querySelector("input[name='id']");
+  if (variantIdInput) {
+    new MutationObserver(() => { applyBundleColorToProducts(); calculateTotal(); })
+      .observe(variantIdInput, { attributes: true, attributeFilter: ["value"] });
+    variantIdInput.addEventListener("change", () => { applyBundleColorToProducts(); calculateTotal(); });
+  }
+
+  applyBundleColorToProducts();
+  calculateTotal();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  initBundleEngine();
+  // Cart-Seite: TeeinBlue-Bild-Fix beim Laden ausführen
+  // (auf der Cart-Seite gibt es keine initBundleEngine-Logik,
+  //  aber die Bilder müssen trotzdem korrigiert werden)
+  if (window.location.pathname.includes("/cart")) {
+    fixTeeinBlueImages();
+  }
+});
+document.addEventListener("shopify:section:load", initBundleEngine);
+document.addEventListener("shopify:section:select", initBundleEngine);
+document.addEventListener("shopify:block:select", initBundleEngine);
