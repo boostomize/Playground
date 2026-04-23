@@ -1,0 +1,1514 @@
+{% if section.settings.enable_section %}
+{% assign s = section.settings %}
+
+<style>
+  :root {
+    --tb-accent:    {{ s.accent_color    | default: '#FF6B00' }};
+    --tb-accent-bg: {{ s.accent_bg_color | default: '#FFF8F2' }};
+    --tb-btn-bg:    {{ s.button_color    | default: '#FF6B00' }};
+    --tb-btn-text:  {{ s.button_text_color | default: '#ffffff' }};
+  }
+
+  /* ─────────────────────────────────────────────────────
+     OVERLAY
+     Always display:flex so visibility/opacity can animate.
+     display:none → display:flex cannot be transitioned —
+     that caused the one-frame fullscreen flash.
+  ───────────────────────────────────────────────────── */
+  #tb-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    z-index: 99998;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    /* hidden state */
+    visibility: hidden;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.28s ease, visibility 0.28s ease;
+    overscroll-behavior: none;
+    touch-action: none;
+  }
+  #tb-overlay.tb-open {
+    visibility: visible;
+    pointer-events: auto;
+    opacity: 1;
+  }
+
+  /* ─────────────────────────────────────────────────────
+     MODAL — Mobile bottom-sheet
+     Starts completely below viewport (translateY 100%) so
+     the slide-up animation always looks crisp.
+  ───────────────────────────────────────────────────── */
+  #tb-modal {
+    background: #fff;
+    width: 100%;
+    max-width: 540px;
+    max-height: 84vh;
+    border-radius: 20px 20px 0 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 -6px 40px rgba(0, 0, 0, 0.18);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    transform: translateY(100%);
+    transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+    touch-action: pan-y;
+  }
+  #tb-modal, #tb-modal * { box-sizing: border-box; }
+  #tb-overlay.tb-open #tb-modal { transform: translateY(0); }
+
+  /* Drag handle */
+  #tb-modal::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 4px;
+    background: #e0e0e0;
+    border-radius: 2px;
+    margin: 10px auto 0;
+    flex-shrink: 0;
+  }
+
+  /* ── Desktop: centred card ── */
+  @media (min-width: 640px) {
+    #tb-overlay { align-items: center; padding: 24px; }
+    #tb-modal {
+      max-width: 720px;
+      max-height: 88vh;
+      border-radius: 20px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+      transform: translateY(24px) scale(0.97);
+      transition: transform 0.38s cubic-bezier(0.22, 1.1, 0.36, 1),
+                  opacity 0.28s ease;
+      opacity: 0;
+    }
+    #tb-modal::before { display: none; }
+    #tb-overlay.tb-open #tb-modal {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
+  }
+
+  /* ── Header ── */
+  .tb-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 16px 8px;
+    border-bottom: 1px solid #f0f0f0;
+    flex-shrink: 0;
+  }
+  .tb-header-left {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    font-weight: 800;
+    color: #111;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+  .tb-header-icon-wrap {
+    width: 28px; height: 28px;
+    background: var(--tb-accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .tb-header-icon-wrap svg { width: 15px; height: 15px; fill: none; stroke: #fff; stroke-width: 2; }
+  .tb-close-btn {
+    width: 32px; height: 32px;
+    border: none; background: #f2f2f2; border-radius: 50%;
+    font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #555; line-height: 1; padding: 0;
+    transition: background 0.15s; flex-shrink: 0;
+  }
+  .tb-close-btn:hover { background: #e4e4e4; }
+
+  /* ── Scrollable Body ── */
+  .tb-modal-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 9px 13px 4px;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
+  }
+
+  /* ── Success Banner ── */
+  .tb-success-banner {
+    display: flex; align-items: center; gap: 8px;
+    background: #f6f6f6; border-radius: 10px;
+    padding: 7px 12px; font-size: 13px; font-weight: 600;
+    margin-bottom: 7px; color: #222; line-height: 1.35;
+  }
+  .tb-success-banner .tb-check {
+    width: 20px; height: 20px; background: #22c55e; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .tb-success-banner .tb-check svg { width: 11px; height: 11px; fill: none; stroke: #fff; stroke-width: 2.5; }
+
+  /* ── Shipping Block ── */
+  .tb-shipping-section {
+    background: var(--tb-accent-bg);
+    border: 1.5px solid rgba(255,107,0,0.15);
+    border-radius: 14px; padding: 9px 13px; margin-bottom: 8px;
+  }
+  .tb-shipping-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .tb-shipping-texts { flex: 1; }
+  .tb-shipping-headline { font-size: 14px; font-weight: 800; color: #111; margin-bottom: 2px; }
+  .tb-shipping-detail  { font-size: 12px; color: #555; line-height: 1.4; }
+  .tb-shipping-detail strong { color: var(--tb-accent); font-weight: 800; }
+
+  /* ── Free Shipping Reached ── */
+  .tb-shipping-free {
+    display: flex; align-items: center; gap: 9px;
+    background: #edfaee; border: 1.5px solid #86efac;
+    border-radius: 14px; padding: 7px 13px;
+    font-size: 13px; font-weight: 700; color: #15803d; margin-bottom: 8px;
+  }
+
+  /* ── Upsell Intro ── */
+  .tb-upsell-intro { margin-bottom: 8px; }
+  .tb-section-label {
+    font-size: 10.5px; font-weight: 900; color: var(--tb-accent);
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 3px;
+  }
+  .tb-upsell-heading { font-size: 17px; font-weight: 900; margin: 0 0 3px; line-height: 1.18; color: #111; }
+  .tb-upsell-subtext { font-size: 12.5px; color: #777; margin: 0; line-height: 1.4; }
+
+  /* ── Product Grid ──
+     min-height prevents the modal from collapsing while the grid is
+     being rebuilt (skeleton → real cards), which caused the flicker/resize.
+  ── */
+  .tb-product-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 9px;
+    margin-bottom: 10px;
+    min-height: 260px;
+    transition: opacity 0.18s ease;
+  }
+  .tb-product-grid.tb-swapping { opacity: 0; }
+
+  @media (min-width: 640px) {
+    .tb-product-grid {
+      grid-template-columns: repeat(4, 1fr);
+      min-height: 210px;
+    }
+  }
+
+  /* ── Product Card ── */
+  .tb-card {
+    background: #fff; border: 1.5px solid #ebebeb;
+    border-radius: 14px; padding: 7px 7px 9px;
+    display: flex; flex-direction: column;
+    transition: border-color 0.18s, box-shadow 0.18s;
+  }
+  .tb-card:hover { border-color: #ddd; box-shadow: 0 3px 14px rgba(0,0,0,0.09); }
+
+  /* ── Card Image — fixed square, no height jump when image loads ── */
+  .tb-card-image-wrap {
+    width: 100%;
+    padding-top: 100%; /* 1:1 square */
+    border-radius: 10px; overflow: hidden;
+    background: #f3f3f3; position: relative;
+    margin-bottom: 6px; flex-shrink: 0;
+  }
+  .tb-card-image-wrap img {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%; object-fit: cover;
+    display: block; opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .tb-card-image-wrap img.tb-img-loaded { opacity: 1; }
+
+  /* ── Skeleton ── */
+  .tb-skeleton {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, #efefef 25%, #e2e2e2 50%, #efefef 75%);
+    background-size: 200% 100%;
+    animation: tb-shimmer 1.5s infinite;
+    border-radius: 10px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 7px; padding: 10px;
+    transition: opacity 0.25s ease;
+  }
+  .tb-skeleton.tb-skeleton-hide { opacity: 0; pointer-events: none; }
+  @keyframes tb-shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  .tb-skeleton-emoji { font-size: 22px; opacity: 0.5; animation: tb-pulse 1.5s ease-in-out infinite; }
+  @keyframes tb-pulse {
+    0%, 100% { opacity: 0.35; transform: scale(1); }
+    50%       { opacity: 0.65; transform: scale(1.08); }
+  }
+  .tb-skeleton-text { font-size: 9.5px; font-weight: 700; color: #bbb; text-align: center; line-height: 1.35; max-width: 80px; }
+
+  /* ── Card Badge ── */
+  .tb-card-badge {
+    position: absolute; top: 7px; left: 7px;
+    background: var(--tb-accent); color: #fff;
+    font-size: 9.5px; font-weight: 900;
+    padding: 3px 8px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: 0.4px; z-index: 2;
+  }
+
+  /* ── Card Text ── */
+  .tb-card-title    { font-size: 13px; font-weight: 800; margin-bottom: 2px; line-height: 1.2; color: #111; }
+  .tb-card-subtitle { font-size: 11px; color: #999; margin-bottom: 6px; line-height: 1.3; }
+  .tb-card-price-row { display: flex; align-items: baseline; gap: 5px; margin-top: auto; margin-bottom: 3px; flex-wrap: wrap; }
+  .tb-card-price         { font-size: 14px; font-weight: 800; color: #111; }
+  .tb-card-price.tb-discount { color: #dc2626; }
+  .tb-card-compare       { font-size: 12px; color: #bbb; text-decoration: line-through; }
+  /* inkl. MwSt. inline, pushed to end of price row */
+  .tb-vat-inline         { font-size: 9.5px; color: #bbb; line-height: 1; margin-left: auto; white-space: nowrap; align-self: center; }
+
+  /* ── Size Select ── */
+  .tb-size-row   { margin-bottom: 4px; }
+  .tb-size-label { font-size: 10.5px; font-weight: 700; color: #666; margin-bottom: 2px; display: block; }
+  .tb-size-select {
+    width: 100%; border: 1.5px solid #e0e0e0; border-radius: 8px;
+    padding: 4px 8px; font-size: 12px; background: #fff;
+    cursor: pointer; appearance: auto;
+  }
+  .tb-size-select:focus { outline: 2px solid var(--tb-accent); border-color: transparent; }
+
+  /* ── Add Button ── */
+  .tb-add-btn {
+    width: 100%; background: var(--tb-btn-bg); color: var(--tb-btn-text);
+    border: none; border-radius: 999px;
+    padding: 7px 12px; font-size: 13px; font-weight: 800;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    gap: 6px; margin-top: 3px;
+    transition: opacity 0.18s, transform 0.1s; line-height: 1;
+  }
+  .tb-add-btn:hover   { opacity: 0.88; }
+  .tb-add-btn:active  { transform: scale(0.96); }
+  .tb-add-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .tb-add-btn svg { width: 13px; height: 13px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2.2; }
+
+  /* ── Added Label ── */
+  .tb-added-label {
+    width: 100%; background: #dcfce7; border-radius: 999px;
+    text-align: center; padding: 8px;
+    font-size: 12.5px; font-weight: 800; color: #16a34a;
+    margin-top: 4px; transition: opacity 0.35s ease;
+  }
+  .tb-added-label.tb-fadeout { opacity: 0; }
+
+  /* ── Tip Box ── */
+  .tb-tip-box {
+    background: #fafafa; border: 1.5px solid #ebebeb; border-radius: 12px;
+    padding: 8px 12px; font-size: 12px; color: #666; margin-bottom: 10px;
+    display: flex; align-items: flex-start; gap: 8px; line-height: 1.4;
+  }
+  .tb-tip-box .tb-tip-icon { flex-shrink: 0; font-size: 15px; }
+
+  /* ── Bar Skeleton ── */
+  .tb-bar-skeleton {
+    height: 11px; border-radius: 6px;
+    background: linear-gradient(90deg, #efefef 25%, #e2e2e2 50%, #efefef 75%);
+    background-size: 200% 100%;
+    animation: tb-shimmer 1.5s infinite;
+    margin-bottom: 5px;
+  }
+
+  /* ── Footer ── */
+  .tb-modal-footer {
+    padding: 8px 13px 10px;
+    border-top: 1.5px solid #f0f0f0;
+    flex-shrink: 0; background: #fff;
+  }
+  .tb-subtotal-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 14px; font-weight: 700; margin-bottom: 7px; color: #111;
+  }
+  .tb-subtotal-row span:last-child { font-size: 15px; }
+  .tb-checkout-btn {
+    width: 100%; background: var(--tb-btn-bg); color: var(--tb-btn-text);
+    border: none; border-radius: 999px;
+    padding: 11px 20px; font-size: 15px; font-weight: 900;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    gap: 8px; margin-bottom: 7px;
+    transition: opacity 0.18s, transform 0.12s; letter-spacing: 0.2px;
+  }
+  .tb-checkout-btn:hover  { opacity: 0.9; }
+  .tb-checkout-btn:active { transform: scale(0.98); }
+  .tb-checkout-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2.2; }
+  .tb-cart-link {
+    display: block; text-align: center; font-size: 13px;
+    color: #888; text-decoration: underline; cursor: pointer;
+    transition: color 0.18s;
+  }
+  .tb-cart-link:hover { color: #444; }
+  /* Reduce space below cart link */
+  .tb-modal-footer { padding-bottom: 8px; }
+
+  /* ── Utility ── */
+  .tb-hidden { display: none !important; }
+
+  /* ── Floating Re-open Button ── */
+  #tb-reopen-btn {
+    position: fixed;
+    z-index: 9998;
+    {% if s.reopen_button_position == 'bottom-left' %}
+    left: 14px;
+    {% elsif s.reopen_button_position == 'bottom-center' %}
+    left: 50%;
+    {% else %}
+    right: 14px;
+    {% endif %}
+    bottom: {{ s.reopen_button_bottom | default: 76 }}px;
+    display: flex; align-items: center; gap: 7px;
+    background: rgba(30,30,30,0.82);
+    color: #fff;
+    border: none; border-radius: 10px;
+    padding: 9px 14px;
+    font-size: 12.5px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.28s ease;
+    transform: translateY(8px){% if s.reopen_button_position == 'bottom-center' %} translateX(-50%){% endif %};
+    white-space: nowrap;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    letter-spacing: 0.1px;
+  }
+  #tb-reopen-btn.tb-reopen-visible {
+    opacity: 1; pointer-events: auto;
+    transform: translateY(0){% if s.reopen_button_position == 'bottom-center' %} translateX(-50%){% endif %};
+  }
+  #tb-reopen-btn:hover  { background: rgba(20,20,20,0.92); }
+  #tb-reopen-btn:active { transform: scale(0.97){% if s.reopen_button_position == 'bottom-center' %} translateX(-50%){% endif %}; }
+  /* Small accent dot */
+  .tb-reopen-dot {
+    width: 6px; height: 6px;
+    background: var(--tb-accent);
+    border-radius: 50%; flex-shrink: 0;
+  }
+  #tb-reopen-btn svg { display: none; } /* clean without arrow on this style */
+  @media (min-width: 640px) {
+    #tb-reopen-btn { bottom: {{ s.reopen_button_bottom_desktop | default: 24 }}px; }
+  }
+
+  /* ── Theme Editor Preview Button ── */
+  .tb-editor-trigger {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    z-index: 99998;
+    background: var(--tb-accent); color: #fff;
+    border: 2px solid rgba(255,255,255,0.35); border-radius: 999px;
+    padding: 11px 22px; font-size: 13px; font-weight: 800; cursor: pointer;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.22);
+    display: flex; align-items: center; gap: 7px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    transition: opacity 0.2s, transform 0.15s, background 0.2s;
+    letter-spacing: 0.2px; white-space: nowrap;
+  }
+  .tb-editor-trigger:hover  { opacity: 0.9; transform: translateX(-50%) translateY(-2px); }
+  .tb-editor-trigger:active { transform: translateX(-50%) scale(0.97); }
+  .tb-editor-trigger.tb-editor-open { background: #222; border-color: rgba(255,255,255,0.15); }
+  .tb-editor-label { font-size: 15px; }
+  .tb-editor-banner {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100000;
+    background: #111; color: #fff; font-size: 12px; font-weight: 600;
+    text-align: center; padding: 7px 16px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .tb-editor-banner-dot {
+    width: 7px; height: 7px; background: var(--tb-accent); border-radius: 50%;
+    animation: tb-blink 1.2s ease-in-out infinite;
+  }
+  @keyframes tb-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+</style>
+
+{% if request.design_mode %}
+<div class="tb-editor-banner" id="tb-editor-banner" style="display:none">
+  <span class="tb-editor-banner-dot"></span>
+  Vorschaumodus – Änderungen werden live übernommen
+</div>
+<button class="tb-editor-trigger" id="tb-editor-trigger" aria-label="Popup Vorschau umschalten">
+  <span class="tb-editor-label">👁</span> Popup Vorschau
+</button>
+{% endif %}
+
+<div id="tb-overlay" role="dialog" aria-modal="true" aria-label="Upsell Angebote">
+  <div id="tb-modal">
+
+    <div class="tb-modal-header">
+      <div class="tb-header-left">
+        <div class="tb-header-icon-wrap">
+          <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+        </div>
+        <span id="tb-item-count-text">Warenkorb</span>
+      </div>
+      <button class="tb-close-btn" id="tb-close-btn" aria-label="Schließen">✕</button>
+    </div>
+
+    <div class="tb-modal-body">
+
+      <div class="tb-success-banner" id="tb-success-banner"{% if s.show_success_banner == false %} style="display:none"{% endif %}>
+        <span class="tb-check">
+          <svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg>
+        </span>
+        <span><span id="tb-product-name">Produkt</span> erfolgreich hinzugefügt</span>
+      </div>
+
+      <div class="tb-shipping-section" id="tb-shipping-section"{% if s.show_shipping_block == false %} style="display:none"{% endif %}>
+        <div class="tb-shipping-top">
+          <div class="tb-shipping-texts">
+            <div class="tb-shipping-headline">Fast geschafft! 🚀</div>
+            <div class="tb-shipping-detail">
+              Nur noch <strong id="tb-remaining-amount">–</strong> für kostenlosen Versand
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tb-shipping-free tb-hidden" id="tb-shipping-free"{% if s.show_shipping_block == false %} style="display:none"{% endif %}>
+        🎉 <span id="tb-free-shipping-text">{{ s.free_shipping_reached_text | default: 'Kostenloser Versand gesichert!' }}</span>
+      </div>
+
+      {% unless s.section_label == blank and s.heading_text == blank and s.subtext_text == blank %}
+      <div class="tb-upsell-intro">
+        {% unless s.section_label == blank %}<div class="tb-section-label">{{ s.section_label }}</div>{% endunless %}
+        {% unless s.heading_text == blank %}<h2 class="tb-upsell-heading">{{ s.heading_text }}</h2>{% endunless %}
+        {% unless s.subtext_text == blank %}<p class="tb-upsell-subtext">{{ s.subtext_text }}</p>{% endunless %}
+      </div>
+      {% endunless %}
+
+      <div class="tb-product-grid" id="tb-product-grid"></div>
+
+      {% unless s.tip_text == blank %}
+      <div class="tb-tip-box">
+        <span class="tb-tip-icon">🎁</span>
+        <span>{{ s.tip_text | default: 'Viele Kunden bestellen gerne gleich ein passendes Extra dazu!' }}</span>
+      </div>
+      {% endunless %}
+
+    </div>
+
+    <div class="tb-modal-footer">
+      <div class="tb-subtotal-row">
+        <span>Zwischensumme</span>
+        <span id="tb-subtotal">–</span>
+      </div>
+      <button class="tb-checkout-btn" id="tb-checkout-btn">
+        {{ s.checkout_btn_text | default: 'Zur Kasse gehen' }}
+        <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </button>
+      <a class="tb-cart-link" id="tb-cart-link">{{ s.back_link_text | default: 'Nein danke, nur zum Warenkorb' }}</a>
+    </div>
+
+  </div>
+</div>
+
+{% if s.show_reopen_button != false %}
+<button id="tb-reopen-btn" aria-label="{{ s.reopen_button_text | default: 'Dein Design auf mehr Produkten' }}">
+  <span class="tb-reopen-dot"></span>
+  {{ s.reopen_button_text | default: 'Dein Design auf mehr Produkten' }}
+  <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+</button>
+{% endif %}
+
+<!-- Dawn cart_type:page shim — synchronous, before Dawn's defer scripts -->
+<script>
+(function () {
+  if (document.querySelector('cart-notification') || document.querySelector('cart-drawer')) return;
+  var shim = document.createElement('cart-notification');
+  shim.id = 'tb-cart-shim';
+  shim.style.display = 'none';
+  document.body.appendChild(shim);
+  shim.getSectionsToRender = function () { return []; };
+  shim.setActiveElement    = function () {};
+  shim.renderContents      = function (parsedState) {
+    if (typeof window.__tbHandleCartAdd === 'function') window.__tbHandleCartAdd(parsedState);
+  };
+})();
+</script>
+
+<!-- Block Dawn cart-drawer & cart-notification BEFORE they are registered.
+     Dawn loads component scripts with defer, so they run after this inline
+     script. We intercept customElements.define() synchronously so we patch
+     the class prototype the moment Dawn hands it to the browser.
+     Instance-level patching is too late because Dawn's pubsub subscriptions
+     are wired up inside connectedCallback, which runs right after define(). -->
+<script>
+(function () {
+  var _origDefine = customElements.define.bind(customElements);
+  customElements.define = function (name, ctor, opts) {
+    if (name === 'cart-drawer' || name === 'cart-notification') {
+      ['open', 'renderContents', 'getSectionsToRender'].forEach(function (method) {
+        var orig = ctor.prototype[method];
+        if (typeof orig !== 'function') return;
+        ctor.prototype[method] = function () {
+          var tbOverlay = document.getElementById('tb-overlay');
+          if (tbOverlay && tbOverlay.classList.contains('tb-open')) {
+            return method === 'getSectionsToRender' ? [] : undefined;
+          }
+          return orig.apply(this, arguments);
+        };
+      });
+    }
+    return _origDefine(name, ctor, opts);
+  };
+})();
+</script>
+
+<script>
+(function () {
+
+  /* ── Config ── */
+  const CFG = {
+    freeThreshold : {{ s.free_shipping_threshold | default: 60 }} * 100,
+    loadingText   : {{ s.loading_text | default: 'Wir erstellen dein Produkt…' | json }},
+    popularBadge  : {{ s.popular_badge_text | default: 'Beliebt' | json }},
+    popupDelay    : {{ s.popup_delay_ms | default: 120 }},
+    freeShipText  : {{ s.free_shipping_reached_text | default: 'Kostenloser Versand gesichert! Füge gerne weitere Produkte hinzu.' | json }},
+    showShipping  : {{ s.show_shipping_block | default: true }},
+    showSuccessBanner: {{ s.show_success_banner | default: true }},
+    vatText       : {{ s.vat_text | default: 'inkl. MwSt.' | json }},
+    backendBase   : "https://upsell-design-extractor-transparent-production.up.railway.app"
+  };
+
+  let CAMPAIGNS = [];
+  try {
+    const raw = {{ shop.metafields.boostomize.upsell_campaigns.value | json }};
+    CAMPAIGNS = Array.isArray(raw) ? raw : JSON.parse(raw);
+  } catch (e) { CAMPAIGNS = []; }
+
+  let pageSession = null;
+
+  /* ── DOM ── */
+  const $           = id => document.getElementById(id);
+  const overlay     = $("tb-overlay");
+  const closeBtn    = $("tb-close-btn");
+  const grid        = $("tb-product-grid");
+  const subtotalEl  = $("tb-subtotal");
+  const shipSection = $("tb-shipping-section");
+  const shipFree    = $("tb-shipping-free");
+  const shipFreeEl  = $("tb-free-shipping-text");
+  const remainEl    = $("tb-remaining-amount");
+  const countEl     = $("tb-item-count-text");
+  const nameEl      = $("tb-product-name");
+  const checkoutBtn = $("tb-checkout-btn");
+  const cartLink    = $("tb-cart-link");
+  const reopenBtn   = $("tb-reopen-btn");
+
+  const fmt  = c  => (c / 100).toFixed(2).replace(".", ",") + "\u00a0€";
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  async function fetchCart() {
+    const r = await fetch("/cart.js", { credentials: "same-origin" });
+    if (!r.ok) throw new Error("cart.js " + r.status);
+    return r.json();
+  }
+
+  /* ── iOS-safe scroll lock ── */
+  let _scrollY = 0;
+  function lockScroll() {
+    _scrollY = window.scrollY;
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top      = `-${_scrollY}px`;
+    document.body.style.width    = "100%";
+  }
+  function unlockScroll() {
+    document.body.style.position = "";
+    document.body.style.top      = "";
+    document.body.style.width    = "";
+    document.body.style.overflow = "";
+    window.scrollTo(0, _scrollY);
+  }
+
+  /* ── Block Dawn cart-drawer & cart-notification while popup is open ──
+     Two-layer defence:
+
+     LAYER 1 — Prototype patch (patchDawnCartUI)
+       Dawn defines renderContents/open on the class prototype via customElements.
+       Patching Object.getPrototypeOf(element) hits that prototype directly,
+       so it works regardless of when Dawn's deferred scripts finish loading.
+       Called at DOMContentLoaded AND in openModal() to cover both timings.
+       __tbPatched guard lives on the prototype so it is truly set only once.
+
+     LAYER 2 — MutationObserver force-close (startCartDrawerBlocker)
+       Belt-and-suspenders: watches cart-drawer's class attribute and
+       immediately removes "active" if it appears while our overlay is open,
+       preventing any visible flash of the drawer panel.
+  ── */
+  function patchDawnCartUI() {
+    ["cart-drawer", "cart-notification"].forEach(function(sel) {
+      var el = document.querySelector(sel + ":not(#tb-cart-shim)");
+      if (!el) return;
+      var proto = Object.getPrototypeOf(el);
+      if (!proto || proto.__tbPatched) return;
+      ["open", "renderContents", "getSectionsToRender"].forEach(function(method) {
+        if (typeof proto[method] !== "function") return;
+        var orig = proto[method];
+        proto[method] = function() {
+          if (overlay.classList.contains("tb-open")) {
+            return method === "getSectionsToRender" ? [] : undefined;
+          }
+          return orig.apply(this, arguments);
+        };
+      });
+      proto.__tbPatched = true;
+    });
+  }
+
+  function startCartDrawerBlocker() {
+    var cd = document.querySelector("cart-drawer");
+    if (!cd) return;
+    new MutationObserver(function() {
+      if (!overlay.classList.contains("tb-open")) return;
+      if (cd.classList.contains("active")) {
+        cd.classList.remove("active");
+        cd.setAttribute("aria-hidden", "true");
+      }
+      var panel = cd.querySelector("[id='CartDrawer']") || cd.querySelector(".drawer");
+      if (panel && panel.hasAttribute("open")) panel.removeAttribute("open");
+    }).observe(cd, { attributes: true, subtree: false, attributeFilter: ["class"] });
+  }
+
+  /* ── Modal open/close ──
+     Overlay uses visibility+opacity (always display:flex).
+     No display toggle = no fullscreen flash.
+  ── */
+  function openModal() {
+    patchDawnCartUI();
+    overlay.classList.add("tb-open");
+    lockScroll();
+    hideReopenButton();
+  }
+  function closeModal() {
+    overlay.classList.remove("tb-open");
+    unlockScroll();
+    if (pageSession) showReopenButton();
+  }
+
+  /* ── Re-open button ──
+     Only shown on the original product page.
+     Automatically hidden when any cart drawer / notification / our popup is open.
+  ── */
+  function isCartUIOpen() {
+    const path = window.location.pathname;
+    if (path === "/cart" || path.startsWith("/checkout"))   return true;
+    if (document.body.classList.contains("template-cart"))  return true;
+    if (document.querySelector("cart-drawer.active"))        return true;
+    if (document.querySelector(".cart-drawer.is-open"))      return true;
+    if (document.querySelector("#cart-notification.active")) return true;
+    if (document.body.classList.contains("overflow-hidden")) return true;
+    if (overlay.classList.contains("tb-open"))               return true;
+    return false;
+  }
+
+  function showReopenButton() {
+    if (!reopenBtn || !pageSession) return;
+    /* Only on the same URL as the original popup trigger */
+    const cur = window.location.href.split("?")[0];
+    if (pageSession.url && pageSession.url !== cur) return;
+    /* Don't show over any open cart UI */
+    if (isCartUIOpen()) return;
+    reopenBtn.classList.add("tb-reopen-visible");
+  }
+
+  function hideReopenButton() {
+    reopenBtn?.classList.remove("tb-reopen-visible");
+  }
+
+  /* Watch for cart drawers / notifications opening and hide button immediately */
+  function startReopenButtonWatcher() {
+    if (!reopenBtn) return;
+    const observer = new MutationObserver(() => {
+      if (isCartUIOpen()) {
+        hideReopenButton();
+      } else if (pageSession) {
+        showReopenButton();
+      }
+    });
+    /* Watch body class changes (overflow-hidden, template-*) */
+    observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    /* Watch cart-drawer and cart-notification class changes */
+    const watchTargets = [
+      document.querySelector("cart-drawer"),
+      document.querySelector("cart-notification"),
+      document.querySelector("#cart-notification")
+    ].filter(Boolean);
+    watchTargets.forEach(el => observer.observe(el, { attributes: true, attributeFilter: ["class"] }));
+  }
+
+  /* ── Summary ── */
+  async function updateSummary(cart) {
+    if (!cart) { try { cart = await fetchCart(); } catch(e) { return; } }
+    const total = cart.total_price || 0;
+    const count = cart.item_count  || 0;
+    subtotalEl.textContent = fmt(total);
+    countEl.textContent    = count + (count === 1 ? " Artikel im Warenkorb" : " Artikel im Warenkorb");
+    if (!CFG.showShipping) return;
+    if (total >= CFG.freeThreshold) {
+      shipSection?.classList.add("tb-hidden");
+      shipFree?.classList.remove("tb-hidden");
+      if (shipFreeEl) shipFreeEl.textContent = CFG.freeShipText;
+    } else {
+      shipSection?.classList.remove("tb-hidden");
+      shipFree?.classList.add("tb-hidden");
+      if (remainEl) remainEl.textContent = fmt(CFG.freeThreshold - total);
+    }
+  }
+
+  /* ── Preview URLs ── */
+  function getBaseMockupUrl() {
+    const img = document.querySelector(".tee-printarea--image img");
+    return img ? img.src : null;
+  }
+  function buildPreviewUrl(ep, art, base, target, pa) {
+    const key = [art, base, target, pa.x, pa.y, pa.width, pa.height].join("|");
+    const p = new URLSearchParams({ url: art, mockup_url: base, target_mockup_url: target,
+      print_x: pa.x, print_y: pa.y, print_w: pa.width, print_h: pa.height, cache_key: key });
+    return CFG.backendBase + "/" + ep + "?" + p;
+  }
+
+  /* ── Skeleton cards ── */
+  function renderSkeletonCards(n) {
+    grid.innerHTML = "";
+    grid.classList.remove("tb-swapping");
+    for (let i = 0; i < n; i++) {
+      const card = document.createElement("div");
+      card.className = "tb-card";
+      const fakeSelect = (i % 2 === 0) ? `
+        <div class="tb-size-row">
+          <span class="tb-size-label" style="color:#ccc">Größe wählen</span>
+          <select class="tb-size-select" disabled style="opacity:0.35;pointer-events:none">
+            <option>S</option><option selected>M</option><option>L</option><option>XL</option>
+          </select>
+        </div>` : "";
+      card.innerHTML = `
+        <div class="tb-card-image-wrap">
+          <div class="tb-skeleton">
+            <span class="tb-skeleton-emoji">✨</span>
+            <span class="tb-skeleton-text">${CFG.loadingText}</span>
+          </div>
+        </div>
+        <div class="tb-bar-skeleton" style="width:72%"></div>
+        <div class="tb-bar-skeleton" style="width:52%;margin-bottom:8px"></div>
+        ${fakeSelect}
+        <div class="tb-bar-skeleton" style="width:48%;margin-bottom:6px"></div>
+        <div class="tb-bar-skeleton" style="height:32px;border-radius:999px;margin-top:auto"></div>`;
+      grid.appendChild(card);
+    }
+  }
+
+  /* ── Find campaign ── */
+  async function findCampaign(handle) {
+    if (!CAMPAIGNS.length) return null;
+    let pd = null;
+    try { const r = await fetch("/products/" + handle + ".js"); if (r.ok) pd = await r.json(); } catch(e) {}
+    if (!pd) return null;
+    const pid = String(pd.id);
+    return CAMPAIGNS.find(c => c.master_type === "product" && String(c.master_product_id) === pid)
+        || CAMPAIGNS.find(c => c.master_type === "collection")
+        || null;
+  }
+
+  /* ── Render product cards ──────────────────────────────────────────────────
+     Strategy to eliminate the empty-grid flash (phase 2 in the screenshots):
+
+     OLD: grid.innerHTML = "" → await fetch per card → append cards one by one
+          Result: empty grid visible for the duration of each fetch (100-300ms)
+
+     NEW: 1. Prefetch ALL product data in parallel (Promise.all)
+          2. Build ALL cards into a DocumentFragment entirely off-DOM
+          3. Single synchronous swap: grid.innerHTML = "" + grid.appendChild(fragment)
+             The browser paints exactly once — skeleton cards → real cards, no empty frame.
+          4. Start async image loading after the swap (images fill in over skeleton)
+  ── */
+  async function renderCards(campaign, mainItem, artworkUrl) {
+    const baseMockupUrl = getBaseMockupUrl();
+
+    /* Step 1: Prefetch all product data in parallel */
+    const productDataList = await Promise.all(
+      campaign.products.map(async (config) => {
+        if (!config.product_handle) return null;
+        try {
+          const r = await fetch("/products/" + config.product_handle + ".js");
+          return r.ok ? await r.json() : null;
+        } catch(e) { return null; }
+      })
+    );
+
+    /* Step 2: Build all cards into a fragment — no DOM access yet */
+    const fragment = document.createDocumentFragment();
+    const imageLoaders = []; /* deferred image loads, started after DOM swap */
+
+    for (let ci = 0; ci < campaign.products.length; ci++) {
+      const config = campaign.products[ci];
+      const pd     = productDataList[ci];
+      const variants = pd ? pd.variants : [];
+
+      let visibleOpts = config.visible_options || [];
+      if (!visibleOpts.length && pd) {
+        const kws = ["größe","groesse","size","taille","maat"];
+        visibleOpts = (pd.options || []).filter(o => kws.some(k => o.name.toLowerCase().includes(k))).map(o => o.name);
+      }
+      const selOpts = {};
+
+      const card = document.createElement("div");
+      card.className = "tb-card";
+
+      /* Image wrap — skeleton stays visible until image arrives */
+      const wrap = document.createElement("div");
+      wrap.className = "tb-card-image-wrap";
+
+      if (ci === 0) {
+        const badge = document.createElement("div");
+        badge.className = "tb-card-badge";
+        badge.textContent = CFG.popularBadge;
+        wrap.appendChild(badge);
+      }
+
+      const skeleton = document.createElement("div");
+      skeleton.className = "tb-skeleton";
+      skeleton.innerHTML = `<span class="tb-skeleton-emoji">✨</span><span class="tb-skeleton-text">${CFG.loadingText}</span>`;
+      wrap.appendChild(skeleton);
+
+      const img = document.createElement("img");
+      img.alt = config.product_title || "";
+      const previewState = { value: artworkUrl };
+
+      function makeOnImgReady(sk, im) {
+        return function onImgReady() {
+          sk.classList.add("tb-skeleton-hide");
+          im.classList.add("tb-img-loaded");
+        };
+      }
+      const onImgReady = makeOnImgReady(skeleton, img);
+
+      /* Queue image loading — will be started after DOM swap */
+      if (baseMockupUrl && artworkUrl && config.mockup_url) {
+        const pa          = config.print_area || { x: 0.30, y: 0.28, width: 0.35, height: 0.40 };
+        const urlMain     = buildPreviewUrl("generic-preview",     artworkUrl, baseMockupUrl, config.mockup_url, pa);
+        const urlFallback = buildPreviewUrl("api/generic-preview", artworkUrl, baseMockupUrl, config.mockup_url, pa);
+
+        imageLoaders.push(function startLoad() {
+          function tryLoad(endpoint) {
+            fetch(endpoint)
+              .then(r => r.json())
+              .then(data => {
+                if (data.ok && data.url) {
+                  previewState.value = data.url;
+                  img.onload  = onImgReady;
+                  img.onerror = function() { previewState.value = artworkUrl; onImgReady(); img.src = artworkUrl; };
+                  img.src = data.url;
+                } else { throw new Error("no url"); }
+              })
+              .catch(() => {
+                if (endpoint === urlMain) { tryLoad(urlFallback); }
+                else { previewState.value = artworkUrl; onImgReady(); img.src = artworkUrl; }
+              });
+          }
+          tryLoad(urlMain);
+        });
+      } else {
+        previewState.value = artworkUrl;
+        imageLoaders.push(function startLoad() {
+          img.onload = img.onerror = onImgReady;
+          img.src = artworkUrl || "";
+        });
+      }
+
+      wrap.appendChild(img);
+      card.appendChild(wrap);
+
+      /* Title */
+      const title = document.createElement("div");
+      title.className = "tb-card-title";
+      title.textContent = config.product_title || (pd ? pd.title : "Produkt");
+      card.appendChild(title);
+
+      /* Subtitle */
+      const subText = config.product_subtitle || (pd ? pd.product_type : "");
+      if (subText) {
+        const sub = document.createElement("div");
+        sub.className = "tb-card-subtitle";
+        sub.textContent = subText;
+        card.appendChild(sub);
+      }
+
+      /* Size rows — collected, appended after price */
+      const sizeRows = [];
+      for (const optName of visibleOpts) {
+        if (!pd) continue;
+        const oIdx = pd.options.findIndex(o => o.name === optName);
+        if (oIdx < 0) continue;
+        const oKey = "option" + (oIdx + 1);
+        const vals = [...new Set(variants.map(v => v[oKey]).filter(Boolean))];
+        if (!vals.length) continue;
+        const row = document.createElement("div");
+        row.className = "tb-size-row";
+        const lbl = document.createElement("span");
+        lbl.className = "tb-size-label";
+        lbl.textContent = optName + " wählen";
+        const sel = document.createElement("select");
+        sel.className = "tb-size-select";
+        vals.forEach(v => { const o = document.createElement("option"); o.value = o.textContent = v; sel.appendChild(o); });
+        sel.value = vals.includes("M") ? "M" : vals[Math.floor(vals.length / 2)];
+        selOpts[optName] = sel.value;
+        sel.addEventListener("change", e => { selOpts[optName] = e.target.value; });
+        row.appendChild(lbl); row.appendChild(sel);
+        sizeRows.push(row);
+      }
+
+      /* Price row */
+      const priceRow = document.createElement("div");
+      priceRow.className = "tb-card-price-row";
+      const priceEl  = document.createElement("span"); priceEl.className = "tb-card-price"; priceEl.textContent = "–";
+      const compareEl = document.createElement("span"); compareEl.className = "tb-card-compare";
+      priceRow.append(priceEl, compareEl);
+      if (CFG.vatText) {
+        const vatEl = document.createElement("span"); vatEl.className = "tb-vat-inline"; vatEl.textContent = CFG.vatText;
+        priceRow.appendChild(vatEl);
+      }
+      card.appendChild(priceRow);
+      if (variants.length) {
+        const v0 = variants[0];
+        const pc = parseInt(v0.price, 10);
+        if (!isNaN(pc)) priceEl.textContent = fmt(pc);
+        const cc = parseInt(v0.compare_at_price, 10);
+        if (!isNaN(cc) && cc > pc) { compareEl.textContent = fmt(cc); priceEl.classList.add("tb-discount"); }
+      }
+
+      sizeRows.forEach(r => card.appendChild(r));
+
+      /* Add button */
+      const addBtn = document.createElement("button");
+      addBtn.className = "tb-add-btn";
+      addBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg> Hinzufügen`;
+      card.appendChild(addBtn);
+
+      const addedLbl = document.createElement("div");
+      addedLbl.className = "tb-added-label tb-hidden";
+      addedLbl.textContent = "✓ Hinzugefügt!";
+      card.appendChild(addedLbl);
+
+      addBtn.addEventListener("click", async () => {
+        let variantId = null;
+        if (variants.length) {
+          if (!visibleOpts.length) {
+            variantId = variants[0].id;
+          } else {
+            for (const v of variants) {
+              let match = true;
+              for (const on of visibleOpts) {
+                const oi = pd.options.findIndex(o => o.name === on);
+                if (oi < 0) continue;
+                if (v["option" + (oi + 1)] !== selOpts[on]) { match = false; break; }
+              }
+              if (match) { variantId = v.id; break; }
+            }
+            if (!variantId) variantId = variants[0].id;
+          }
+        }
+        if (!variantId) return;
+        const props = {};
+        if (mainItem.properties) {
+          if (mainItem.properties._customization_id)    props._customization_id = mainItem.properties._customization_id;
+          if (mainItem.properties._tib_design_link_1)   props._tib_design_link_1 = mainItem.properties._tib_design_link_1;
+          if (mainItem.properties._customization_image) props._original_customization_image = mainItem.properties._customization_image;
+        }
+        props._customization_image  = previewState.value || artworkUrl;
+        props._upsell_id            = config.product_id || (pd ? String(pd.id) : "");
+        props._upsell_product_title = config.product_title || "";
+        addBtn.disabled = true;
+        try {
+          const r = await fetch("/cart/add.js", {
+            method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+            body: JSON.stringify({ items: [{ id: variantId, quantity: 1, properties: props }] })
+          });
+          if (r.ok) {
+            addBtn.classList.add("tb-hidden");
+            addedLbl.classList.remove("tb-hidden");
+            setTimeout(() => {
+              addedLbl.classList.add("tb-fadeout");
+              setTimeout(() => {
+                addedLbl.classList.add("tb-hidden");
+                addedLbl.classList.remove("tb-fadeout");
+                addBtn.classList.remove("tb-hidden");
+                addBtn.disabled = false;
+              }, 380);
+            }, 2200);
+            await updateSummary();
+          } else { addBtn.disabled = false; }
+        } catch(e) { addBtn.disabled = false; }
+      });
+
+      fragment.appendChild(card);
+    }
+
+    /* Step 3: Single synchronous DOM swap — skeletons → real cards, zero empty frame */
+    grid.innerHTML = "";
+    grid.appendChild(fragment);
+
+    /* Step 4: Start image loading now that cards are in the DOM.
+       Skeletons remain visible until each image arrives. */
+    imageLoaders.forEach(fn => fn());
+  }
+
+  /* ── Wait for customization item ── */
+  async function waitForMainItem() {
+    for (let i = 0; i < 22; i++) {
+      try {
+        const cart = await fetchCart();
+        const item = cart.items.find(x =>
+          x.properties &&
+          typeof x.properties._customization_image === "string" &&
+          x.properties._customization_image !== "");
+        if (item) return { item, cart };
+      } catch(e) {}
+      await wait(300);
+    }
+    return null;
+  }
+
+  /* ── Open popup ── */
+  async function openPopup(candidateHandle, sessionData) {
+    /* For re-opens: if the grid already has real cards (not skeletons),
+       skip skeleton + re-render entirely to avoid the visible fade-out flicker */
+    const hasRealCards = sessionData && grid.querySelector(".tb-card:not(:empty)") &&
+                         !grid.querySelector(".tb-skeleton");
+
+    if (!hasRealCards) {
+      renderSkeletonCards(sessionData?.campaign?.products?.length || 4);
+    }
+    openModal();
+    let mainItem, cart, campaign;
+    if (sessionData) {
+      mainItem = sessionData.mainItem;
+      campaign = sessionData.campaign || await findCampaign(sessionData.handle);
+      try { cart = await fetchCart(); } catch(e) {}
+    } else {
+      try { await updateSummary(); } catch(e) {}
+      const result = await waitForMainItem();
+      if (!result) { closeModal(); return; }
+      mainItem = result.item;
+      cart     = result.cart;
+      campaign = await findCampaign(candidateHandle || mainItem.handle);
+    }
+    if (nameEl) nameEl.textContent = mainItem.product_title || mainItem.title || "Produkt";
+    await updateSummary(cart);
+    if (!campaign?.products?.length) { closeModal(); return; }
+    /* Only re-render cards if we showed skeletons */
+    if (!hasRealCards) {
+      await renderCards(campaign, mainItem, mainItem.properties._customization_image);
+    }
+    const sessionUrl = window.location.href.split("?")[0];
+    pageSession = { url: sessionUrl, mainItem, campaign, handle: candidateHandle || mainItem.handle };
+    try {
+      sessionStorage.setItem("tb_popup_session", JSON.stringify({
+        url: sessionUrl, handle: pageSession.handle,
+        mainItem: { product_title: mainItem.product_title, title: mainItem.title,
+                    handle: mainItem.handle, properties: mainItem.properties }
+      }));
+    } catch(e) {}
+  }
+
+  /* ── Polling ── */
+  let lastKeys = null, running = false;
+  async function checkCart() {
+    if (running) return;
+    running = true;
+    try {
+      const cart = await fetchCart();
+      const keys = cart.items.map(i => i.key);
+      if (lastKeys === null) { lastKeys = keys; running = false; return; }
+      const newItems = cart.items.filter(i => !lastKeys.includes(i.key));
+      lastKeys = keys;
+      if (!newItems.length || isCartUIOpen() || overlay.classList.contains("tb-open")) {
+        running = false; return;
+      }
+      const candidate = newItems[newItems.length - 1];
+      await wait(CFG.popupDelay);
+      openPopup(candidate.handle);
+    } catch(e) {}
+    running = false;
+  }
+
+  /* ── Dawn page-mode shim handler ── */
+  window.__tbHandleCartAdd = async function(parsedState) {
+    try {
+      const handle = parsedState && (parsedState.handle || parsedState.product?.handle);
+      if (!handle) return;
+      if (overlay.classList.contains("tb-open")) return;
+      await wait(CFG.popupDelay);
+      openPopup(handle);
+    } catch(e) {}
+  };
+
+  /* ── Dawn pubsub (notification/drawer modes) ── */
+  function trySubscribeDawnPubSub() {
+    if (typeof subscribe !== "function" || typeof PUB_SUB_EVENTS === "undefined") return;
+    subscribe(PUB_SUB_EVENTS.cartUpdate, async (event) => {
+      if (!event || event.source !== "product-form") return;
+      if (isCartUIOpen() || overlay.classList.contains("tb-open")) return;
+      const handle = event.cartData && (event.cartData.handle || event.cartData.product?.handle);
+      if (!handle) return;
+      await wait(CFG.popupDelay);
+      openPopup(handle);
+    });
+  }
+
+  /* ── Session restore ── */
+  function tryRestoreSession() {
+    try {
+      const raw = sessionStorage.getItem("tb_popup_session");
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (!d.url || d.url !== window.location.href.split("?")[0]) return;
+      pageSession = { url: d.url, handle: d.handle, mainItem: d.mainItem, campaign: null };
+      showReopenButton();
+    } catch(e) {}
+  }
+
+  /* ── Init ── */
+  document.addEventListener("DOMContentLoaded", () => {
+    patchDawnCartUI();
+    startCartDrawerBlocker();
+    closeBtn.onclick = closeModal;
+    overlay.onclick  = e => { if (e.target === overlay) closeModal(); };
+    document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+    checkoutBtn.onclick = () => { window.location.href = "/checkout"; };
+    cartLink.onclick    = () => { window.location.href = "/cart"; };
+    if (reopenBtn) reopenBtn.onclick = () => { if (pageSession) openPopup(pageSession.handle, pageSession); };
+    tryRestoreSession();
+    startReopenButtonWatcher();
+
+    const editorTrigger = $("tb-editor-trigger");
+    const editorBanner  = $("tb-editor-banner");
+    if (editorTrigger) {
+      editorTrigger.onclick = () => {
+        if (overlay.classList.contains("tb-open")) {
+          closeModal();
+          editorTrigger.classList.remove("tb-editor-open");
+          editorTrigger.innerHTML = '<span class="tb-editor-label">👁</span> Popup Vorschau';
+          if (editorBanner) editorBanner.style.display = "none";
+        } else {
+          showEditorPreview();
+          editorTrigger.classList.add("tb-editor-open");
+          editorTrigger.innerHTML = '<span class="tb-editor-label">✕</span> Vorschau schließen';
+          if (editorBanner) editorBanner.style.display = "flex";
+        }
+      };
+    }
+
+    if (!window.Shopify || !Shopify.designMode) {
+      setInterval(checkCart, 800);
+      trySubscribeDawnPubSub();
+    }
+  });
+
+  /* ── bfcache back-button fix ── */
+  window.addEventListener("pageshow", e => {
+    if (!e.persisted) return;
+    overlay.classList.remove("tb-open");
+    unlockScroll();
+    fetchCart().then(c => { lastKeys = c.items.map(i => i.key); }).catch(() => {});
+    if (pageSession) showReopenButton();
+  });
+
+  /* ════════════════════════════════════════════════════
+     THEME EDITOR PREVIEW
+  ════════════════════════════════════════════════════ */
+  function buildDemoCard(title, subtitle, price, badge, sizes) {
+    const card = document.createElement("div"); card.className = "tb-card";
+    const wrap = document.createElement("div"); wrap.className = "tb-card-image-wrap";
+    if (badge) { const b = document.createElement("div"); b.className = "tb-card-badge"; b.textContent = badge; wrap.appendChild(b); }
+    const bgs = { "Tasse": "ede8e2", "Kissen": "e2e8e4", "Jutebeutel": "e8e6e2", "T-Shirt": "e4e4ec" };
+    const img = document.createElement("img");
+    img.src = "https://placehold.co/300x300/" + (bgs[title] || "ebebeb") + "/aaaaaa?text=" + encodeURIComponent(title);
+    img.style.cssText = "opacity:0;transition:opacity .35s";
+    img.onload = () => { img.style.opacity = "1"; };
+    wrap.appendChild(img); card.appendChild(wrap);
+    const t = document.createElement("div"); t.className = "tb-card-title"; t.textContent = title; card.appendChild(t);
+    if (subtitle) { const s = document.createElement("div"); s.className = "tb-card-subtitle"; s.textContent = subtitle; card.appendChild(s); }
+    const pr = document.createElement("div"); pr.className = "tb-card-price-row";
+    const pe = document.createElement("span"); pe.className = "tb-card-price"; pe.textContent = price;
+    pr.appendChild(pe); card.appendChild(pr);
+    if (CFG.vatText) { const v = document.createElement("span"); v.className = "tb-vat-inline"; v.textContent = CFG.vatText; pr.appendChild(v); }
+    if (sizes?.length) {
+      const row = document.createElement("div"); row.className = "tb-size-row";
+      const lbl = document.createElement("span"); lbl.className = "tb-size-label"; lbl.textContent = "Größe wählen";
+      const sel = document.createElement("select"); sel.className = "tb-size-select";
+      sizes.forEach(s => { const o = document.createElement("option"); o.value = o.textContent = s; if (s === "M") o.selected = true; sel.appendChild(o); });
+      row.appendChild(lbl); row.appendChild(sel); card.appendChild(row);
+    }
+    const btn = document.createElement("button"); btn.className = "tb-add-btn";
+    btn.innerHTML = '<svg viewBox="0 0 24 24" style="width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg> Hinzufügen';
+    btn.onclick = e => e.preventDefault();
+    card.appendChild(btn);
+    return card;
+  }
+
+  function showEditorPreview() {
+    const demos = [
+      { title: "Tasse",      subtitle: "Keramik \u00b7 330 ml",            price: "14,95\u00a0\u20ac", badge: CFG.popularBadge, sizes: null },
+      { title: "Kissen",     subtitle: "Weicher Bezug \u00b7 40\u00d740cm", price: "19,95\u00a0\u20ac", badge: null,             sizes: null },
+      { title: "Jutebeutel", subtitle: "Robust & nachhaltig",               price: "14,95\u00a0\u20ac", badge: null,             sizes: null },
+      { title: "T-Shirt",    subtitle: "100% Baumwolle \u00b7 Unisex",      price: "24,95\u00a0\u20ac", badge: null,             sizes: ["XS","S","M","L","XL","2XL"] }
+    ];
+    grid.innerHTML = "";
+    grid.classList.remove("tb-swapping");
+    demos.forEach(d => grid.appendChild(buildDemoCard(d.title, d.subtitle, d.price, d.badge, d.sizes)));
+    if (nameEl) nameEl.textContent = "Muster Hoodie Weiß";
+    countEl.textContent    = "1 Artikel im Warenkorb";
+    subtotalEl.textContent = "39,95\u00a0\u20ac";
+    if (CFG.showShipping) {
+      const demoTotal = 3995;
+      if (demoTotal >= CFG.freeThreshold) {
+        shipSection?.classList.add("tb-hidden"); shipFree?.classList.remove("tb-hidden");
+        if (shipFreeEl) shipFreeEl.textContent = CFG.freeShipText;
+      } else {
+        shipSection?.classList.remove("tb-hidden"); shipFree?.classList.add("tb-hidden");
+        if (remainEl) remainEl.textContent = fmt(CFG.freeThreshold - demoTotal);
+      }
+    }
+    openModal();
+  }
+
+  if (window.Shopify && Shopify.designMode) {
+    const SID = "{{ section.id }}";
+    document.addEventListener("shopify:section:select", e => {
+      if (e.detail.sectionId !== SID) return;
+      showEditorPreview();
+      const t = $("tb-editor-trigger"), b = $("tb-editor-banner");
+      if (t) { t.classList.add("tb-editor-open"); t.innerHTML = '<span class="tb-editor-label">\u2715</span> Vorschau schlie\u00dfen'; }
+      if (b) b.style.display = "flex";
+    });
+    document.addEventListener("shopify:section:deselect", e => {
+      if (e.detail.sectionId !== SID) return;
+      closeModal();
+      const t = $("tb-editor-trigger"), b = $("tb-editor-banner");
+      if (t) { t.classList.remove("tb-editor-open"); t.innerHTML = '<span class="tb-editor-label">\ud83d\udc41</span> Popup Vorschau'; }
+      if (b) b.style.display = "none";
+    });
+    document.addEventListener("shopify:section:load", e => {
+      if (e.detail.sectionId !== SID) return;
+      setTimeout(() => {
+        showEditorPreview();
+        const t = $("tb-editor-trigger"), b = $("tb-editor-banner");
+        if (t) { t.classList.add("tb-editor-open"); t.innerHTML = '<span class="tb-editor-label">\u2715</span> Vorschau schlie\u00dfen'; }
+        if (b) b.style.display = "flex";
+      }, 60);
+    });
+  }
+
+})();
+</script>
+
+{% endif %}
+
+{% schema %}
+{
+  "name": "Upsell Popup Pro",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "Die Produktkarten in der Theme-Editor-Vorschau zeigen Beispieldaten und sind nicht mit echten Produkten verknüpft. Im Live-Shop werden Kampagnen und Produktvorschauen automatisch aus den Metafeldern geladen."
+    },
+    {
+      "type": "checkbox",
+      "id": "enable_section",
+      "label": "Upsell Popup aktivieren",
+      "default": true
+    },
+    {
+      "type": "header",
+      "content": "Sichtbarkeit der Blöcke"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_success_banner",
+      "label": "Erfolgsmeldung anzeigen",
+      "info": "Zeigt \"Produkt wurde zum Warenkorb hinzugefügt\" im Popup an.",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_shipping_block",
+      "label": "Kostenloser-Versand-Block anzeigen",
+      "default": true
+    },
+    {
+      "type": "header",
+      "content": "Texte"
+    },
+    {
+      "type": "text",
+      "id": "section_label",
+      "label": "Abschnitts-Label (klein, oben)",
+      "default": "PASST PERFEKT DAZU"
+    },
+    {
+      "type": "text",
+      "id": "heading_text",
+      "label": "Hauptüberschrift",
+      "default": "Dein Design. Mehr Möglichkeiten."
+    },
+    {
+      "type": "textarea",
+      "id": "subtext_text",
+      "label": "Untertitel",
+      "default": "Gleiches Design, andere Produkte – perfekt zum Verschenken oder Selbstbehalten."
+    },
+    {
+      "type": "text",
+      "id": "tip_text",
+      "label": "Tipp-Box Text",
+      "default": "Viele Kunden bestellen gerne gleich ein passendes Extra dazu!"
+    },
+    {
+      "type": "text",
+      "id": "loading_text",
+      "label": "Ladetext (Produktvorschau)",
+      "default": "Wir erstellen dein Produkt…"
+    },
+    {
+      "type": "text",
+      "id": "vat_text",
+      "label": "MwSt.-Hinweis unter dem Preis",
+      "default": "inkl. MwSt.",
+      "info": "Leer lassen zum Ausblenden."
+    },
+    {
+      "type": "text",
+      "id": "popular_badge_text",
+      "label": "Badge-Text (erstes Produkt)",
+      "default": "Beliebt"
+    },
+    {
+      "type": "header",
+      "content": "Versand & Freigrenzen"
+    },
+    {
+      "type": "number",
+      "id": "free_shipping_threshold",
+      "label": "Kostenlos-Versand ab (€, ganzzahlig)",
+      "default": 60
+    },
+    {
+      "type": "text",
+      "id": "free_shipping_reached_text",
+      "label": "Text: Kostenlos-Versand bereits erreicht",
+      "default": "Kostenloser Versand gesichert! Füge gerne weitere Produkte hinzu."
+    },
+    {
+      "type": "header",
+      "content": "Farben & Design"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Akzentfarbe",
+      "default": "#FF6B00"
+    },
+    {
+      "type": "color",
+      "id": "accent_bg_color",
+      "label": "Akzentfarbe Hintergrund (helle Tönung)",
+      "default": "#FFF8F2"
+    },
+    {
+      "type": "color",
+      "id": "button_color",
+      "label": "Button-Hintergrundfarbe",
+      "default": "#FF6B00"
+    },
+    {
+      "type": "color",
+      "id": "button_text_color",
+      "label": "Button-Textfarbe",
+      "default": "#ffffff"
+    },
+    {
+      "type": "header",
+      "content": "Buttons & Links"
+    },
+    {
+      "type": "text",
+      "id": "checkout_btn_text",
+      "label": "Kasse-Button Text",
+      "default": "Zur Kasse gehen"
+    },
+    {
+      "type": "text",
+      "id": "back_link_text",
+      "label": "Zurück-Link Text",
+      "default": "Nein danke, nur zum Warenkorb"
+    },
+    {
+      "type": "header",
+      "content": "Verhalten"
+    },
+    {
+      "type": "number",
+      "id": "popup_delay_ms",
+      "label": "Verzögerung nach Warenkorb-Klick (ms)",
+      "default": 120
+    },
+    {
+      "type": "header",
+      "content": "Wieder-Öffnen Button"
+    },
+    {
+      "type": "paragraph",
+      "content": "Erscheint auf der Produktseite nachdem das Popup geschlossen wurde."
+    },
+    {
+      "type": "checkbox",
+      "id": "show_reopen_button",
+      "label": "Wieder-Öffnen Button anzeigen",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "reopen_button_text",
+      "label": "Button-Text",
+      "default": "Dein Design auf mehr Produkten"
+    },
+    {
+      "type": "select",
+      "id": "reopen_button_position",
+      "label": "Position",
+      "default": "bottom-right",
+      "options": [
+        { "value": "bottom-right",  "label": "Unten rechts" },
+        { "value": "bottom-left",   "label": "Unten links"  },
+        { "value": "bottom-center", "label": "Unten Mitte"  }
+      ]
+    },
+    {
+      "type": "number",
+      "id": "reopen_button_bottom",
+      "label": "Abstand vom unteren Rand – Mobile (px)",
+      "default": 76
+    },
+    {
+      "type": "number",
+      "id": "reopen_button_bottom_desktop",
+      "label": "Abstand vom unteren Rand – Desktop (px)",
+      "default": 24
+    }
+  ],
+  "presets": [
+    { "name": "Upsell Popup Pro" }
+  ]
+}
+{% endschema %}
