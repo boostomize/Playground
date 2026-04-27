@@ -1,0 +1,630 @@
+{% schema %}
+{
+  "name": "Bundle Engine",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "Die Produkt-Zuordnungen und Optionsnamen werden über die App-Einstellungen (Bundle-Zuordnungen) verwaltet und automatisch aus den Shop-Metafields geladen."
+    },
+    {
+      "type": "header",
+      "content": "Preis Notiz"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_price_note",
+      "label": "Preis Notiz anzeigen",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "price_note_text",
+      "label": "Notiz Text",
+      "default": "Preis für beide Produkte"
+    },
+    {
+      "type": "color",
+      "id": "price_note_bg",
+      "label": "Hintergrundfarbe",
+      "default": "#1aa31a"
+    },
+    {
+      "type": "color",
+      "id": "price_note_text_color",
+      "label": "Textfarbe",
+      "default": "#ffffff"
+    },
+    {
+      "type": "range",
+      "id": "price_note_margin_top",
+      "label": "Abstand oben",
+      "min": 0,
+      "max": 40,
+      "step": 2,
+      "unit": "px",
+      "default": 0
+    },
+    {
+      "type": "range",
+      "id": "price_note_margin_bottom",
+      "label": "Abstand unten",
+      "min": 0,
+      "max": 40,
+      "step": 2,
+      "unit": "px",
+      "default": 10
+    },
+    {
+      "type": "header",
+      "content": "Varianten Bundle-Produkt"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_bundle_product_variants",
+      "label": "Varianten anzeigen",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "bundle_variant_display_type",
+      "label": "Anzeige der Varianten",
+      "options": [
+        { "value": "buttons", "label": "Buttons" },
+        { "value": "images", "label": "Variantenbilder" }
+      ],
+      "default": "buttons"
+    },
+    {
+      "type": "range",
+      "id": "variant_image_size_desktop",
+      "label": "Variantenbild Größe Desktop",
+      "min": 40,
+      "max": 140,
+      "step": 2,
+      "unit": "px",
+      "default": 80
+    },
+    {
+      "type": "range",
+      "id": "variant_image_size_mobile",
+      "label": "Variantenbild Größe Mobil",
+      "min": 30,
+      "max": 100,
+      "step": 2,
+      "unit": "px",
+      "default": 60
+    },
+    {
+      "type": "paragraph",
+      "content": "Die Farbe der Produkte wird automatisch basierend auf der Bundle-Variante synchronisiert."
+    },
+    {
+      "type": "header",
+      "content": "Preis"
+    },
+    {
+      "type": "select",
+      "id": "after_add_to_cart",
+      "label": "Aktion nach Hinzufügen zum Warenkorb",
+      "options": [
+        { "value": "redirect", "label": "Zur Warenkorb-Seite weiterleiten" },
+        { "value": "drawer", "label": "Warenkorb-Slider öffnen" },
+        { "value": "stay", "label": "Auf der Seite bleiben" }
+      ],
+      "default": "redirect"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_bundle_product_price",
+      "label": "Preis des Bundle-Produkts anzeigen",
+      "default": false
+    },
+    {
+      "type": "paragraph",
+      "content": "Wenn aktiviert, wird der Bundle-Produktpreis angezeigt statt des berechneten Bundle-Preises."
+    },
+    {
+      "type": "select",
+      "id": "discount_type",
+      "label": "Rabatt-Typ",
+      "options": [
+        { "value": "percent", "label": "Prozent" },
+        { "value": "fixed", "label": "Fixbetrag (€)" }
+      ],
+      "default": "percent"
+    },
+    {
+      "type": "number",
+      "id": "discount_value",
+      "label": "Rabatt-Wert",
+      "default": 0
+    },
+    {
+      "type": "header",
+      "content": "Abstände"
+    },
+    {
+      "type": "range",
+      "id": "spacing_top_desktop",
+      "label": "Abstand oben Desktop",
+      "min": 0,
+      "max": 150,
+      "step": 2,
+      "unit": "px",
+      "default": 24
+    },
+    {
+      "type": "range",
+      "id": "spacing_bottom_desktop",
+      "label": "Abstand unten Desktop",
+      "min": 0,
+      "max": 150,
+      "step": 2,
+      "unit": "px",
+      "default": 24
+    },
+    {
+      "type": "range",
+      "id": "spacing_top_mobile",
+      "label": "Abstand oben Mobil",
+      "min": 0,
+      "max": 120,
+      "step": 2,
+      "unit": "px",
+      "default": 16
+    },
+    {
+      "type": "range",
+      "id": "spacing_bottom_mobile",
+      "label": "Abstand unten Mobil",
+      "min": 0,
+      "max": 120,
+      "step": 2,
+      "unit": "px",
+      "default": 16
+    },
+    {
+      "type": "header",
+      "content": "Backend"
+    },
+    {
+      "type": "text",
+      "id": "backend_base_url",
+      "label": "Backend Base URL Image Crop",
+      "info": "NICHT ÄNDERN ohne genau zu wissen was für Auswirkungen es hat",
+      "default": "https://couple-teeinblue-product-cart-image-production.up.railway.app"
+    },
+    {
+      "type": "header",
+      "content": "Personalisierungs-Formular"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_tee_group_dividers",
+      "label": "Gruppen-Trennner anzeigen",
+      "info": "Zeigt verschiedene Artworks in eigenen Cards im TeeinBlue Formular an, wenn zwei oder mehr Artworks untereinander angezeigt werden.",
+      "default": true
+    }
+  ],
+  "presets": [
+    {
+      "name": "Bundle Engine"
+    }
+  ]
+}
+{% endschema %}
+
+{% comment %} Bundle mappings from app metafields {% endcomment %}
+{% assign bundle_mappings_raw = shop.metafields.boostomize.bundle_mappings.value %}
+{% assign current_product_id = product.id | prepend: "gid://shopify/Product/" %}
+{% assign bundle_found = false %}
+{% assign p1_handle = "" %}
+{% assign p2_handle = "" %}
+{% assign final_p1_opt1 = "" %}
+{% assign final_p1_opt2 = "" %}
+{% assign final_p1_opt3 = "" %}
+{% assign final_p2_opt1 = "" %}
+{% assign final_p2_opt2 = "" %}
+{% assign final_p2_opt3 = "" %}
+{% assign final_p1_aw_label = "" %}
+{% assign final_p2_aw_label = "" %}
+
+{% if bundle_mappings_raw %}
+  {% for mapping in bundle_mappings_raw %}
+    {% if mapping.bundle_id == current_product_id %}
+      {% assign bundle_found = true %}
+      {% assign p1_handle = mapping.product_1_handle %}
+      {% assign p2_handle = mapping.product_2_handle %}
+      {% assign final_p1_opt1 = mapping.product_1_option_1_label %}
+      {% assign final_p1_opt2 = mapping.product_1_option_2_label %}
+      {% assign final_p1_opt3 = mapping.product_1_option_3_label %}
+      {% assign final_p2_opt1 = mapping.product_2_option_1_label %}
+      {% assign final_p2_opt2 = mapping.product_2_option_2_label %}
+      {% assign final_p2_opt3 = mapping.product_2_option_3_label %}
+      {% assign final_p1_aw_label = mapping.product_1_aw_label %}
+      {% assign final_p2_aw_label = mapping.product_2_aw_label %}
+      {% break %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+
+<div
+class="bundle-engine-config"
+data-section-id="{{ section.id }}"
+data-bundle-found="{{ bundle_found }}"
+data-product-1-handle="{{ p1_handle }}"
+data-product-2-handle="{{ p2_handle }}"
+data-product-handle="{{ product.handle }}"
+data-product-title="{{ product.title }}"
+
+data-product1-option1-label="{{ final_p1_opt1 }}"
+data-product1-option2-label="{{ final_p1_opt2 }}"
+data-product1-option3-label="{{ final_p1_opt3 }}"
+
+data-product2-option1-label="{{ final_p2_opt1 }}"
+data-product2-option2-label="{{ final_p2_opt2 }}"
+data-product2-option3-label="{{ final_p2_opt3 }}"
+
+data-product1-aw-label="{{ final_p1_aw_label }}"
+data-product2-aw-label="{{ final_p2_aw_label }}"
+
+data-show-price-note="{{ section.settings.show_price_note }}"
+data-price-note-text="{{ section.settings.price_note_text | escape }}"
+data-price-note-bg="{{ section.settings.price_note_bg }}"
+data-price-note-text-color="{{ section.settings.price_note_text_color }}"
+data-price-note-margin-top="{{ section.settings.price_note_margin_top }}"
+data-price-note-margin-bottom="{{ section.settings.price_note_margin_bottom }}"
+
+data-discount-type="{{ section.settings.discount_type }}"
+data-discount-value="{{ section.settings.discount_value }}"
+
+data-show-bundle-product-variants="{{ section.settings.show_bundle_product_variants }}"
+data-show-bundle-product-price="{{ section.settings.show_bundle_product_price }}"
+data-after-add-to-cart="{{ section.settings.after_add_to_cart }}"
+
+data-backend-base-url="{{ section.settings.backend_base_url }}"
+style="display:none!important;"
+></div>
+
+<style>
+.bundle-wrapper { margin-top: 24px; }
+.bundle-product-block { margin-bottom: 28px; }
+.bundle-option-title { font-weight: 600; margin-bottom: 10px; font-size: 15px; font-family: inherit; }
+.bundle-variants { display: flex; flex-wrap: wrap; gap: 10px; }
+.bundle-variant-btn { position: relative; padding: 10px 18px; border: 1px solid #d9d9d9; background: #fff; cursor: pointer; border-radius: 8px; font-size: 15px; font-weight: 700; font-family: inherit; transition: all 0.15s ease; color: #000; }
+.bundle-variant-btn:hover { border-color: #000; }
+.bundle-variant-btn.active { border: 2px solid #000; }
+.bundle-variant-btn.active::after { content: "✓"; position: absolute; top: -8px; right: -8px; background: #000; color: #fff; width: 22px; height: 22px; border-radius: 50%; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+
+.bundle-wrapper { margin-top: {{ section.settings.spacing_top_desktop }}px; margin-bottom: {{ section.settings.spacing_bottom_desktop }}px; }
+
+@media(max-width:768px){
+.bundle-wrapper {
+margin-top: {{ section.settings.spacing_top_mobile }}px;
+margin-bottom: {{ section.settings.spacing_bottom_mobile }}px;
+}
+}
+
+.bundle-variant-image { cursor:pointer; border:2px solid transparent; border-radius:8px; }
+.bundle-variant-image.active { border-color:#000; }
+
+.bundle-price-note {
+display:inline-block;
+order:-1;
+position:relative;
+padding:8px 14px;
+border-radius:6px;
+font-weight:700;
+font-size:14px;
+margin-top:{{ section.settings.price_note_margin_top }}px;
+margin-bottom:{{ section.settings.price_note_margin_bottom }}px;
+background:{{ section.settings.price_note_bg }};
+color:{{ section.settings.price_note_text_color }};
+}
+
+.bundle-price-note::after {
+content:"";
+position:absolute;
+bottom:-8px;
+left:14px;
+border-left:8px solid transparent;
+border-right:8px solid transparent;
+border-top:8px solid {{ section.settings.price_note_bg }};
+}
+
+section[id*="template"] *:has(> .bundle-price-note),
+.product__info-container *:has(> .bundle-price-note),
+.product-information *:has(> .bundle-price-note),
+[id^="price-template"] *:has(> .bundle-price-note) {
+display:flex !important;
+flex-direction:column !important;
+align-items:flex-start !important;
+}
+.product__info-container .product-information-price-container:has(> .bundle-price-note) {
+flex-direction:column;
+align-items:flex-start;
+}
+</style>
+
+<script>
+window.BundleEngineProduct = {{ product | json }};
+</script>
+
+<script src="https://bundle-engine.pages.dev/bundle-engine.min.js" defer></script>
+
+{% comment %} Personalisierungs Form Gruppentrennner UI {% endcomment %}
+{% if section.settings.show_tee_group_dividers %}
+<style>
+  .tee-section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 18px;
+    margin: 20px 0 0 0;
+    background: #1a1a1a;
+    color: white;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    border-radius: 10px 10px 0 0;
+    border: 2px solid #1a1a1a;
+    animation: tee-fade-in 0.2s ease;
+  }
+
+  .tee-section-label { flex: 1; }
+
+  .tee-section-size {
+    font-size: 12px;
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.35);
+    padding: 3px 12px;
+    border-radius: 20px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .tee-card-item {
+    border-left: 2px solid #e0e0e0 !important;
+    border-right: 2px solid #e0e0e0 !important;
+    padding-left: 18px !important;
+    padding-right: 18px !important;
+    padding-top: 8px !important;
+    padding-bottom: 14px !important;
+    background: #fff;
+    margin: 0 !important;
+  }
+
+  .tee-section-header + .tee-card-item {
+    padding-top: 16px !important;
+  }
+
+  .tee-section-end {
+    border: 2px solid #e0e0e0;
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+    margin: 0 0 24px 0;
+    padding: 10px 0;
+    background: #fff;
+  }
+
+  @keyframes tee-fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+</style>
+
+<script>
+(function () {
+  const config = document.querySelector(".bundle-engine-config");
+  const LABELS = [
+    config?.dataset?.product1AwLabel || "Person 1",
+    config?.dataset?.product2AwLabel || "Person 2",
+    "Person 3",
+    "Person 4",
+  ];
+
+  function getSizeInfo(personIndex) {
+    const blocks = document.querySelectorAll('.bundle-product-block');
+    const block  = blocks[personIndex];
+    if (!block) return '';
+    const titleEl   = block.querySelector('.bundle-option-title');
+    const activeBtn = block.querySelector('.bundle-variant-btn.active');
+    const name = titleEl   ? titleEl.textContent.trim()   : '';
+    const size = activeBtn ? activeBtn.textContent.trim() : '';
+    if (!size) return '';
+    return name ? `${name}: ${size}` : size;
+  }
+
+  function teardown() {
+    document.querySelectorAll('.tee-card-item').forEach(el => el.classList.remove('tee-card-item'));
+    document.querySelectorAll('.tee-section-header, .tee-section-end').forEach(el => el.remove());
+  }
+
+  // Klassen + Footer-Position nach teeinblue-internem Re-Render korrigieren
+  function refreshCardItems() {
+    const form = document.getElementById('teeFormInputs');
+    if (!form) return;
+
+    form.querySelectorAll('.tee-section-header').forEach(header => {
+      let cursor = header.nextElementSibling;
+      let lastContent = null;
+      let footer = null;
+
+      while (cursor) {
+        if (cursor.classList.contains('tee-section-header')) break;
+
+        if (cursor.classList.contains('tee-section-end')) {
+          footer = cursor;
+          cursor = cursor.nextElementSibling;
+          continue;
+        }
+
+        // Echtes teeinblue-Element: Klasse sichern, als letztes merken
+        if (!cursor.classList.contains('tee-card-item')) {
+          cursor.classList.add('tee-card-item');
+        }
+        lastContent = cursor;
+        cursor = cursor.nextElementSibling;
+      }
+
+      // Footer direkt nach letztem echten Element positionieren
+      if (footer && lastContent && footer.previousElementSibling !== lastContent) {
+        lastContent.insertAdjacentElement('afterend', footer);
+      }
+    });
+  }
+
+  function buildDividers() {
+    const form = document.getElementById('teeFormInputs');
+    if (!form) return;
+
+    const templates = Array.from(form.querySelectorAll('.tee-field--template'));
+
+    if (templates.length < 2) {
+      teardown();
+      return;
+    }
+
+    const alreadyBuilt = templates.every(t =>
+      t.previousElementSibling?.classList.contains('tee-section-header')
+    );
+    if (alreadyBuilt) {
+      updateBadges();
+      return;
+    }
+
+    teardown();
+
+    templates.forEach((tpl, i) => {
+      const label = LABELS[i] || `Person ${i + 1}`;
+      const info  = getSizeInfo(i);
+
+      const header = document.createElement('div');
+      header.className = 'tee-section-header';
+      header.innerHTML = `
+        <span class="tee-section-label"> ${label}</span>
+        ${info ? `<span class="tee-section-size">${info}</span>` : ''}
+      `;
+      tpl.parentNode.insertBefore(header, tpl);
+
+      let cursor = tpl;
+      let lastEl = tpl;
+      while (cursor) {
+        cursor.classList.add('tee-card-item');
+        const next = cursor.nextElementSibling;
+        lastEl = cursor;
+        if (!next || next.classList.contains('tee-field--template')) break;
+        cursor = next;
+      }
+
+      const footer = document.createElement('div');
+      footer.className = 'tee-section-end';
+      lastEl.insertAdjacentElement('afterend', footer);
+    });
+  }
+
+  function updateBadges() {
+    document.querySelectorAll('.tee-section-header').forEach((h, i) => {
+      const badge = h.querySelector('.tee-section-size');
+      const info  = getSizeInfo(i);
+      if (badge) {
+        badge.textContent = info || '';
+      } else if (info) {
+        const span = document.createElement('span');
+        span.className = 'tee-section-size';
+        span.textContent = info;
+        h.appendChild(span);
+      }
+    });
+  }
+
+  let pending = false;
+  function scheduleRebuild() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        buildDividers();
+        pending = false;
+      });
+    });
+  }
+
+  let refreshPending = false;
+  function scheduleRefresh() {
+    if (refreshPending) return;
+    refreshPending = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        refreshCardItems();
+        refreshPending = false;
+      });
+    });
+  }
+
+  new MutationObserver((mutations) => {
+    const form = document.getElementById('teeFormInputs');
+    if (!form) return;
+
+    const templates = Array.from(form.querySelectorAll('.tee-field--template'));
+
+    if (templates.length < 2) {
+      if (form.querySelector('.tee-section-header')) teardown();
+      return;
+    }
+
+    const hasOrphan = templates.some(t =>
+      !t.previousElementSibling?.classList.contains('tee-section-header')
+    );
+    if (hasOrphan) {
+      scheduleRebuild();
+      return;
+    }
+
+    // Strukturelle Änderung innerhalb des Forms (teeinblue fügt Felder hinzu/entfernt sie)
+    const hasInternalChange = mutations.some(m =>
+      m.type === 'childList' &&
+      form.contains(m.target) &&
+      !m.target.classList?.contains('tee-section-header') &&
+      !m.target.classList?.contains('tee-section-end')
+    );
+    if (hasInternalChange) {
+      scheduleRefresh();
+      return;
+    }
+
+    const isSizeChange = mutations.some(m =>
+      m.type === 'attributes' &&
+      m.target.classList?.contains('bundle-variant-btn')
+    );
+    if (isSizeChange) updateBadges();
+
+  }).observe(document.body, {
+    childList:       true,
+    subtree:         true,
+    attributes:      true,
+    attributeFilter: ['class'],
+  });
+
+  document.addEventListener('click', e => {
+    if (e.target?.classList?.contains('bundle-variant-btn')) {
+      setTimeout(updateBadges, 100);
+    }
+  });
+
+  let attempts = 0;
+  const waitForBoth = setInterval(() => {
+    const templates     = document.querySelectorAll('#teeFormInputs .tee-field--template');
+    const bundleButtons = document.querySelectorAll('.bundle-product-block .bundle-variant-btn.active');
+    if ((templates.length >= 1 && bundleButtons.length >= 1) || attempts > 30) {
+      clearInterval(waitForBoth);
+      buildDividers();
+    }
+    attempts++;
+  }, 200);
+
+})();
+</script>
+{% endif %}
+{% comment %} END - Personalisierungs Form Gruppentrennner UI {% endcomment %}
